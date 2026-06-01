@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>JR 乗車 RECORD</title>
+<!-- ═══ PWA ═══ -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JR乗車">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Share+Tech+Mono&family=Bebas+Neue&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+:root{
+  --bg:#0a0e1a;
+  --panel:#111827;
+  --panel2:#1a2235;
+  --border:#1e2d45;
+  --accent:#00d4ff;
+  --accent2:#ff6b35;
+  --accent3:#39ff14;
+  --text:#e8f0fe;
+  --muted:#8899bb;
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;}
+
+/* ── HEADER ── */
+#hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;background:var(--panel);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 16px rgba(0,212,255,.5);}
+.logo b{color:var(--accent2);}
+.hstats{display:flex;gap:14px;}
+.hs{text-align:center;}
+.hs-v{font-family:'Share Tech Mono',monospace;font-size:17px;color:var(--accent);line-height:1;}
+.hs-l{font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+
+/* ── PROGRESS BAR ── */
+#pbar-wrap{padding:6px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;}
+.pbar-row{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;}
+.pbar-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+.pbar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent3));border-radius:3px;transition:width .8s cubic-bezier(.16,1,.3,1);box-shadow:0 0 8px rgba(0,212,255,.4);}
+
+/* ── LAYOUT ── */
+#app{display:flex;flex-direction:column;height:100vh;}
+#body{display:flex;flex:1;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+#sidebar{
+  width:260px;flex-shrink:0;
+  background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+@media(max-width:600px){
+  #sidebar{width:100%;position:absolute;bottom:0;left:0;right:0;z-index:100;
+    height:55%;border-top:2px solid var(--accent);border-right:none;}
+  #map-wrap{height:45%;}
+}
+
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.tb{flex:1;padding:9px 4px;background:none;border:none;color:var(--muted);font-size:10px;letter-spacing:.5px;cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;font-family:'Noto Sans KR',sans-serif;transition:all .2s;}
+.tb.on{color:var(--accent);border-bottom-color:var(--accent);background:rgba(0,212,255,.04);}
+
+.tc{display:none;flex:1;overflow-y:auto;flex-direction:column;}
+.tc.on{display:flex;}
+
+/* lines list */
+.lines-wrap{padding:10px;}
+.lcard{
+  background:var(--panel2);border:1px solid var(--border);border-radius:7px;
+  padding:10px 10px 10px 14px;margin-bottom:7px;cursor:pointer;
+  transition:all .2s;position:relative;overflow:hidden;
+}
+.lcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--lc,var(--accent));}
+.lcard:hover,.lcard.sel{border-color:var(--lc,var(--accent));background:rgba(0,212,255,.04);}
+.lc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.lc-name{font-size:12px;font-weight:700;}
+.lc-pct{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--lc,var(--accent));}
+.lc-bar{height:2px;background:var(--border);border-radius:1px;overflow:hidden;}
+.lc-bar-f{height:100%;background:var(--lc,var(--accent));border-radius:1px;transition:width .5s ease;}
+.lc-meta{font-size:9px;color:var(--muted);margin-top:5px;}
+
+/* manual */
+.mpanel{padding:12px;border-bottom:1px solid var(--border);}
+.mpanel h3{font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:9px;}
+.srow{margin-bottom:7px;}
+.srow label{font-size:9px;color:var(--muted);display:block;margin-bottom:2px;}
+.srow select{
+  width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:7px 8px;border-radius:5px;font-size:11px;font-family:'Noto Sans KR',sans-serif;outline:none;cursor:pointer;
+}
+.srow select:focus{border-color:var(--accent);}
+.btn{width:100%;padding:8px;border-radius:5px;border:none;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.5px;transition:all .2s;font-family:'Noto Sans KR',sans-serif;margin-top:4px;}
+.btn-p{background:linear-gradient(135deg,var(--accent),#0088aa);color:#000;}
+.btn-d{background:linear-gradient(135deg,#ff4444,#aa0000);color:#fff;}
+.btn-g{background:linear-gradient(135deg,var(--accent3),#1a9900);color:#000;}
+.btn-g.on{background:linear-gradient(135deg,#ff4444,#aa2200);color:#fff;animation:pglow 1.5s infinite;}
+.btn-r{background:transparent;color:#ff4444;border:1px solid #ff4444;font-size:9px;padding:5px;}
+@keyframes pglow{0%,100%{box-shadow:0 0 4px rgba(255,68,68,.3);}50%{box-shadow:0 0 16px rgba(255,68,68,.8);}}
+.mhint{padding:10px 12px;font-size:10px;color:var(--muted);line-height:1.7;}
+
+/* gps */
+.gps-wrap{padding:12px;}
+.gps-ind{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted);margin-bottom:4px;}
+.gdot{width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.gdot.on{background:var(--accent3);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+.gcoord{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--accent);margin-bottom:8px;}
+.gslog{margin-top:10px;}
+.gslog-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.gslog-item{font-size:10px;color:var(--accent3);padding:4px 0;border-bottom:1px solid var(--border);}
+
+/* log */
+.log-item{padding:8px 12px;border-bottom:1px solid var(--border);}
+.log-t{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--muted);}
+.log-m{font-size:10px;color:var(--text);margin-top:1px;}
+.log-empty{padding:20px;text-align:center;font-size:10px;color:var(--muted);}
+
+/* ── MAP ── */
+#map-wrap{flex:1;position:relative;overflow:hidden;background:#06090f;}
+#map-canvas{position:absolute;top:0;left:0;cursor:grab;}
+#map-canvas:active{cursor:grabbing;}
+
+/* map controls */
+.map-ctrl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:5px;z-index:10;}
+.mc-btn{width:32px;height:32px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.mc-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* legend */
+.map-legend{position:absolute;left:8px;bottom:8px;background:rgba(17,24,39,.9);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:9px;color:var(--muted);z-index:10;}
+.leg-item{display:flex;align-items:center;gap:5px;margin-bottom:3px;}
+.leg-item:last-child{margin-bottom:0;}
+.leg-dot{width:10px;height:3px;border-radius:1px;}
+
+/* toast */
+#toast{
+  position:fixed;bottom:20px;right:16px;
+  background:var(--panel);border:1px solid var(--accent3);color:var(--accent3);
+  padding:10px 16px;border-radius:7px;font-size:11px;z-index:9999;
+  transform:translateY(60px);opacity:0;transition:all .3s;max-width:240px;
+  box-shadow:0 0 16px rgba(57,255,20,.15);
+}
+#toast.on{transform:translateY(0);opacity:1;}
+#toast.warn{border-color:var(--accent2);color:var(--accent2);}
+
+/* station popup */
+#pop-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;}
+#pop-bg.on{display:block;}
+#popup{
+  display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--panel);border:1px solid var(--accent);border-radius:10px;
+  padding:20px;z-index:201;min-width:260px;max-width:90vw;
+  box-shadow:0 0 30px rgba(0,212,255,.15);
+}
+#popup.on{display:block;}
+.pop-title{font-size:16px;font-weight:700;margin-bottom:2px;}
+.pop-sub{font-size:10px;color:var(--muted);margin-bottom:12px;}
+.pop-segs{max-height:180px;overflow-y:auto;margin-bottom:12px;}
+.pop-seg{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;}
+.pop-seg:last-child{border-bottom:none;}
+.seg-ok{color:var(--accent3);}
+.seg-no{color:var(--muted);}
+.seg-btn{padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text);font-size:9px;cursor:pointer;transition:all .2s;}
+.seg-btn:hover{border-color:var(--accent);}
+.seg-btn.ok{border-color:var(--accent3);color:var(--accent3);}
+.pop-close{position:absolute;top:10px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;}
+
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hdr">
+    <div class="logo">JR <b>乗車</b> RECORD</div>
+    <div class="hstats">
+      <div class="hs"><div class="hs-v" id="hv-pct">0.0%</div><div class="hs-l">달성률</div></div>
+      <div class="hs"><div class="hs-v" id="hv-done">0</div><div class="hs-l">완료구간</div></div>
+      <div class="hs"><div class="hs-v" id="hv-total">0</div><div class="hs-l">전체구간</div></div>
+      <div class="hs"><div class="hs-v" id="hv-lines">0</div><div class="hs-l">완주노선</div></div>
+    </div>
+  </div>
+  <div id="pbar-wrap">
+    <div class="pbar-row"><span>전체 진행률 — JR 간토 주요 노선</span><span id="pbar-lbl">0.0%</span></div>
+    <div class="pbar-track"><div class="pbar-fill" id="pbar" style="width:0%"></div></div>
+  </div>
+  <div id="body">
+    <div id="sidebar">
+      <div class="tabs">
+        <button class="tb on" onclick="tab('lines')">노선</button>
+        <button class="tb" onclick="tab('manual')">수동입력</button>
+        <button class="tb" onclick="tab('gps')">GPS</button>
+        <button class="tb" onclick="tab('log')">기록</button>
+      </div>
+
+      <!-- 노선 탭 -->
+      <div class="tc on" id="tc-lines">
+        <div class="lines-wrap" id="lines-list"></div>
+      </div>
+
+      <!-- 수동 탭 -->
+      <div class="tc" id="tc-manual">
+        <div class="mpanel">
+          <h3>구간 수동 입력</h3>
+          <div class="srow"><label>노선</label>
+            <select id="s-line" onchange="onLineSel()">
+              <option value="">-- 노선 선택 --</option>
+            </select>
+          </div>
+          <div class="srow"><label>출발역</label>
+            <select id="s-from"><option value="">-- 출발역 --</option></select>
+          </div>
+          <div class="srow"><label>도착역</label>
+            <select id="s-to"><option value="">-- 도착역 --</option></select>
+          </div>
+          <button class="btn btn-p" onclick="doComplete()">✓ 탑승 완료</button>
+          <button class="btn btn-d" onclick="doUndo()">✕ 구간 취소</button>
+          <button class="btn btn-r" onclick="doReset()">⚠ 전체 초기화</button>
+        </div>
+        <div class="mhint">출발↔도착 사이 모든 구간이 한번에 처리됩니다.<br>예) 도쿄 → 신주쿠 선택 시 중간 역 전부 완료.</div>
+        <div class="mpanel">
+          <h3>데이터 백업</h3>
+          <button class="btn btn-g" onclick="doExport()">⬇ 기록 내보내기 (.json)</button>
+          <button class="btn btn-p" onclick="document.getElementById('import-file').click()">⬆ 기록 가져오기</button>
+          <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="doImport(event)">
+          <div class="mhint" style="padding:8px 0 0;">기기 변경·파일 이동 전 내보내두면 기록을 안전하게 옮길 수 있습니다.</div>
+        </div>
+      </div>
+
+      <!-- GPS 탭 -->
+      <div class="tc" id="tc-gps">
+        <div class="gps-wrap">
+          <div class="gps-ind"><div class="gdot" id="gdot"></div><span id="gstat">GPS 비활성</span></div>
+          <div class="gcoord" id="gcoord">—</div>
+          <button class="btn btn-g" id="gbtn" onclick="toggleGPS()">🚃 열차 탑승 시작</button>
+          <div style="margin-top:8px;font-size:9px;color:var(--muted);line-height:1.7;">
+            열차 탑승 시 버튼 ON → 300m 이내 JR역 자동 감지<br>하차 후 버튼 OFF
+          </div>
+          <div class="gslog">
+            <div class="gslog-title">이번 탑승 기록</div>
+            <div id="gslog-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기록 탭 -->
+      <div class="tc" id="tc-log">
+        <div id="log-list"></div>
+      </div>
+    </div>
+
+    <!-- MAP -->
+    <div id="map-wrap">
+      <canvas id="map-canvas"></canvas>
+      <div class="map-ctrl">
+        <button class="mc-btn" onclick="zoom(1.3)">+</button>
+        <button class="mc-btn" onclick="zoom(0.77)">−</button>
+        <button class="mc-btn" onclick="resetView()" title="전체보기">⊙</button>
+      </div>
+      <div class="map-legend">
+        <div class="leg-item"><div class="leg-dot" style="background:var(--accent3)"></div>완료 구간 (진하게)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:rgba(154,205,50,.3)"></div>미완료 (노선색 연하게)</div>
+        <div class="leg-item" style="margin-top:4px;font-size:8px;opacity:.7;">노선마다 색이 다릅니다</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="pop-bg" onclick="closePop()"></div>
+<div id="popup">
+  <button class="pop-close" onclick="closePop()">×</button>
+  <div class="pop-title" id="pop-title"></div>
+  <div class="pop-sub" id="pop-sub"></div>
+  <div class="pop-segs" id="pop-segs"></div>
+  <button class="btn btn-p" onclick="closePop()">닫기</button>
+</div>
+<div id="toast"></div>
+
+<!-- ═══ 데이터 (지역별) — 새 지역은 여기에 한 줄씩 추가 ═══ -->
+<script src="data/kanto.js"></script>
+<!-- <script src="data/kansai.js"></script> -->
+<!-- <script src="data/tohoku.js"></script> -->
+
+<!-- ═══ 앱 로직 (데이터 로드 후 마지막에) ═══ -->
+<script src="app.js"></script>
+
+<!-- ═══ Service Worker 등록 (PWA / 오프라인) ═══ -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW 등록 실패:', err));
+  });
+}
+</script>
+</body>
+</html>
