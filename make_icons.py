@@ -43,7 +43,9 @@ def render_bold(font, text, color):
         s.blit(font.render(text, True, color), (dx, dy))
     return s.subsurface(s.get_bounding_rect()).copy()
 
-def make(size, fname):
+# ── 고해상도 마스터를 한 번만 그림 ──
+MASTER = 1024
+def render_master(size):
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     r = int(size * 0.22)
     rect = pygame.Rect(0, 0, size, size)
@@ -64,9 +66,14 @@ def make(size, fname):
         int(size * 0.19), bold=True)
     t2 = render_bold(font, "乗車", RED)
     surf.blit(t2, t2.get_rect(center=(size // 2, int(size * 0.76))))
-    pygame.image.save(surf, fname)
+    return surf
+
+master = render_master(MASTER)
+
+# 마스터를 각 크기로 깨끗하게 축소
+for size, fname in [(192, "icon-192.png"), (512, "icon-512.png")]:
+    out = pygame.transform.smoothscale(master, (size, size))
+    pygame.image.save(out, fname)
     print("saved", fname)
 
-make(192, "icon-192.png")
-make(512, "icon-512.png")
 pygame.quit()
