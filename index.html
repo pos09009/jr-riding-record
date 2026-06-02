@@ -74,6 +74,23 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .tc{display:none;flex:1;overflow-y:auto;flex-direction:column;}
 .tc.on{display:flex;}
 
+/* search */
+.search-wrap{padding:10px 10px 0;position:sticky;top:0;background:var(--panel);z-index:3;}
+.search-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:9px 11px;border-radius:7px;font-size:12px;font-family:'Noto Sans KR',sans-serif;outline:none;transition:border-color .2s;}
+.search-input:focus{border-color:var(--accent);}
+.search-input::placeholder{color:var(--muted);}
+.sresults{padding:10px 10px 0;}
+.sresults-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px;}
+.sresult{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 11px;margin-bottom:5px;background:var(--panel2);border:1px solid var(--border);
+  border-left:3px solid var(--lc,var(--accent));border-radius:6px;cursor:pointer;transition:all .2s;}
+.sresult:hover{border-color:var(--lc,var(--accent));background:rgba(0,212,255,.04);}
+.sresult-st{font-size:12px;font-weight:700;}
+.sresult-ln{font-size:9px;color:var(--muted);margin-top:2px;}
+.cards-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:10px 10px 0;}
+.no-result{padding:18px 10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.6;}
+
 /* lines list */
 .lines-wrap{padding:10px;}
 .lcard{
@@ -206,6 +223,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
       <!-- 노선 탭 -->
       <div class="tc on" id="tc-lines">
+        <div class="search-wrap">
+          <input id="search-box" class="search-input" type="text"
+                 placeholder="🔍 역 · 노선 검색…" oninput="onSearch()" autocomplete="off">
+        </div>
         <div class="lines-wrap" id="lines-list"></div>
       </div>
 

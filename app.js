@@ -10,6 +10,7 @@ const LINES = Object.values(window.JR_DATA || {}).flat();
 let done = {};
 let logs = [];
 let selLineId = null;
+let searchQuery = '';
 let gpsOn = false;
 let watchId = null;
 let lastGpsSt = null;
@@ -76,26 +77,105 @@ function updateAll(){
   save();
 }
 
+function lineCard(l){
+  const {d,tot}=lineDone(l);
+  const pct=tot>0?Math.round(d/tot*100):0;
+  const div=document.createElement('div');
+  div.className='lcard'+(selLineId===l.id?' sel':'');
+  div.style.setProperty('--lc',l.color);
+  div.innerHTML=`
+    <div class="lc-top">
+      <div class="lc-name">${l.name}</div>
+      <div class="lc-pct">${pct}%</div>
+    </div>
+    <div class="lc-bar"><div class="lc-bar-f" style="width:${pct}%;background:${l.color}"></div></div>
+    <div class="lc-meta">${d}/${tot} 구간 · ${l.stations.length}역</div>
+  `;
+  div.onclick=()=>selectLine(l.id);
+  return div;
+}
+
 function renderLinesList(){
   const el=document.getElementById('lines-list');
   el.innerHTML='';
-  LINES.forEach(l=>{
-    const {d,tot}=lineDone(l);
-    const pct=tot>0?Math.round(d/tot*100):0;
-    const div=document.createElement('div');
-    div.className='lcard'+(selLineId===l.id?' sel':'');
-    div.style.setProperty('--lc',l.color);
-    div.innerHTML=`
-      <div class="lc-top">
-        <div class="lc-name">${l.name}</div>
-        <div class="lc-pct">${pct}%</div>
-      </div>
-      <div class="lc-bar"><div class="lc-bar-f" style="width:${pct}%;background:${l.color}"></div></div>
-      <div class="lc-meta">${d}/${tot} 구간 · ${l.stations.length}역</div>
-    `;
-    div.onclick=()=>selectLine(l.id);
-    el.appendChild(div);
-  });
+  const q=searchQuery;
+
+  // 검색어 없음 → 전체 노선 카드
+  if(!q){
+    LINES.forEach(l=>el.appendChild(lineCard(l)));
+    return;
+  }
+
+  // ── 역 검색 결과 ──
+  const stMatches=[];
+  LINES.forEach(l=>l.stations.forEach((s,i)=>{
+    if(s.n.toLowerCase().includes(q)) stMatches.push({l,s,i});
+  }));
+  if(stMatches.length){
+    const title=document.createElement('div');
+    title.className='sresults-title';
+    title.textContent=`역 검색 결과 (${stMatches.length})`;
+    el.appendChild(title);
+    stMatches.slice(0,40).forEach(m=>{
+      const ok=isStDone(m.l,m.i);
+      const row=document.createElement('div');
+      row.className='sresult';
+      row.style.setProperty('--lc',m.l.color);
+      row.innerHTML=`
+        <div>
+          <div class="sresult-st">${m.s.n}
+            <span style="color:${ok?'var(--accent3)':'var(--muted)'};font-size:10px;"> ${ok?'✓':'○'}</span>
+          </div>
+          <div class="sresult-ln">${m.l.name}</div>
+        </div>`;
+      row.onclick=()=>gotoStation(m.l.id,m.i);
+      el.appendChild(row);
+    });
+  }
+
+  // ── 노선 검색 결과 ──
+  const lnMatches=LINES.filter(l=>l.name.toLowerCase().includes(q));
+  if(lnMatches.length){
+    const title=document.createElement('div');
+    title.className='sresults-title';
+    title.style.marginTop=stMatches.length?'14px':'0';
+    title.textContent=`노선 검색 결과 (${lnMatches.length})`;
+    el.appendChild(title);
+    lnMatches.forEach(l=>el.appendChild(lineCard(l)));
+  }
+
+  // ── 결과 없음 ──
+  if(!stMatches.length && !lnMatches.length){
+    const none=document.createElement('div');
+    none.className='no-result';
+    none.innerHTML=`"${searchQuery}" 검색 결과가 없습니다.<br>역 이름 또는 노선 이름으로 검색해보세요.`;
+    el.appendChild(none);
+  }
+}
+
+function onSearch(){
+  searchQuery=document.getElementById('search-box').value.trim().toLowerCase();
+  renderLinesList();
+}
+
+// 특정 역(좌표)을 화면 중앙에 두고 확대
+function focusStation(lat,lng,scale){
+  const wrap=document.getElementById('map-wrap');
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  vscale=scale;
+  const p=geo2px(lat,lng);
+  vx+=W/2-p.x; vy+=H/2-p.y;
+  drawMap();
+}
+
+// 검색 결과 역 클릭 → 해당 역으로 지도 확대 + 구간 체크 팝업
+function gotoStation(lid,idx){
+  selLineId=lid;
+  const l=LINES.find(x=>x.id===lid);
+  fillManualSelects(lid);
+  const s=l.stations[idx];
+  focusStation(s.lat,s.lng,18);
+  showPopup(l,idx);
 }
 
 // ═══════════════════════════════════════════
