@@ -4,6 +4,26 @@
 // ═══════════════════════════════════════════
 const LINES = Object.values(window.JR_DATA || {}).flat();
 
+// 공식 노선기호(영문 코드) + 공식 라인컬러. 로드 시 id 기준으로 적용(단일 출처).
+const LINE_META = {
+  yamanote:{code:'JY',color:'#9ACD32'},
+  chuo:{code:'JC',color:'#F15A22'}, ome:{code:'JC',color:'#F15A22'}, itsukaichi:{code:'JC',color:'#F15A22'},
+  sobu:{code:'JB',color:'#FFD400'},
+  keihin:{code:'JK',color:'#00B2E5'}, negishi:{code:'JK',color:'#00B2E5'},
+  tokaido:{code:'JT',color:'#F68B1E'},
+  yokosuka:{code:'JO',color:'#004EA2'}, sobu_rapid:{code:'JO',color:'#004EA2'},
+  shonan:{code:'JS',color:'#E4002B'},
+  takasaki:{code:'JU',color:'#F68B1E'}, utsunomiya:{code:'JU',color:'#F68B1E'},
+  joban:{color:'#0079C2'}, // 조반선(중거리)은 단일 노선코드 없음 — JJ는 별도 조반쾌속선(우에노~토리데)
+  saikyo:{code:'JA',color:'#00AC9B'}, kawagoe:{color:'#8C8C8C'}, // 카와고에선: 공식 회색·코드 없음(사이쿄 직통이나 자체색은 회색)
+  yokohama:{code:'JH',color:'#80C342'},
+  nambu:{code:'JN',color:'#F0C800'}, nambu_hamakawasaki:{code:'JN',color:'#F0C800'},
+  keiyo:{code:'JE',color:'#C9252C'}, keiyo_takaya:{code:'JE',color:'#C9252C'}, keiyo_futamata:{code:'JE',color:'#C9252C'},
+  musashino:{code:'JM',color:'#ED6D00'},
+  hachiko:{color:'#C9B58B'} // 하치코선: 코드 없음, 공식 베이지/탄(올리브 아님)
+};
+LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; } });
+
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
@@ -103,9 +123,10 @@ function lineCard(l){
   const div=document.createElement('div');
   div.className='lcard'+(selLineId===l.id?' sel':'');
   div.style.setProperty('--lc',l.color);
+  const badge=l.code?`<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`:'';
   div.innerHTML=`
     <div class="lc-top">
-      <div class="lc-name">${l.name}</div>
+      <div class="lc-name">${badge}${l.name}</div>
       <div class="lc-pct">${pct}%</div>
     </div>
     <div class="lc-bar"><div class="lc-bar-f" style="width:${pct}%;background:${l.color}"></div></div>
@@ -168,7 +189,9 @@ function renderLinesList(){
   if(!stMatches.length && !lnMatches.length){
     const none=document.createElement('div');
     none.className='no-result';
-    none.innerHTML=`"${searchQuery}" 검색 결과가 없습니다.<br>역 이름 또는 노선 이름으로 검색해보세요.`;
+    none.textContent=`"${searchQuery}" 검색 결과가 없습니다.`;
+    none.appendChild(document.createElement('br'));
+    none.appendChild(document.createTextNode('역 이름 또는 노선 이름으로 검색해보세요.'));
     el.appendChild(none);
   }
 }

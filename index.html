@@ -102,6 +102,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .lcard:hover,.lcard.sel{border-color:var(--lc,var(--accent));background:rgba(0,212,255,.04);}
 .lc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
 .lc-name{font-size:12px;font-weight:700;}
+.lc-code{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:17px;padding:0 3px;margin-right:6px;border:2px solid;border-radius:5px;background:#fff;color:#111;font-family:'Share Tech Mono',monospace;font-size:10px;font-weight:700;line-height:1;vertical-align:middle;}
 .lc-pct{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--lc,var(--accent));}
 .lc-bar{height:2px;background:var(--border);border-radius:1px;overflow:hidden;}
 .lc-bar-f{height:100%;background:var(--lc,var(--accent));border-radius:1px;transition:width .5s ease;}
@@ -256,7 +257,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <button class="btn btn-d" onclick="doUndo()">✕ 구간 취소</button>
           <button class="btn btn-r" onclick="doReset()">⚠ 전체 초기화</button>
         </div>
-        <div class="mhint">출발↔도착 사이 모든 구간이 한번에 처리됩니다.<br>예) 도쿄 → 신주쿠 선택 시 중간 역 전부 완료.<br>순환선(야마노테 등)은 방향(시계 外回り / 반시계 内回り)을 고를 수 있습니다.</div>
+        <div class="mhint">출발↔도착 사이 모든 구간이 한번에 처리됩니다.<br>예) 도쿄 → 신주쿠 선택 시 중간 역 전부 완료.<br>순환선(야마노테 등)은 방향(시계 / 반시계)을 고를 수 있습니다.</div>
         <div class="mpanel">
           <h3>데이터 백업</h3>
           <button class="btn btn-g" onclick="doExport()">⬇ 기록 내보내기 (.json)</button>
