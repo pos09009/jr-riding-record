@@ -44,20 +44,30 @@ function doneLines(){
   return LINES.filter(l=>{ const {d,tot}=lineDone(l); return d===tot; }).length;
 }
 
+function rangeSegs(line,a,b){
+  // a역→b역 사이 구간 인덱스 배열. 순환선은 더 짧은 호(arc)를 선택해
+  // 마지막 닫는 구간(끝역→첫역)도 도달 가능. 비순환선은 기존대로 min→max.
+  if(!line.loop){
+    const s=Math.min(a,b),e=Math.max(a,b),out=[];
+    for(let i=s;i<e;i++) out.push(i);
+    return out;
+  }
+  const n=line.stations.length;
+  const fwd=(from,to)=>{ const o=[]; for(let i=from;i!==to;i=(i+1)%n) o.push(i); return o; };
+  const f1=fwd(a,b), f2=fwd(b,a);
+  return f1.length<=f2.length?f1:f2;
+}
 function completeRange(lid,a,b){
   const line=LINES.find(l=>l.id===lid);
   if(!line) return 0;
-  const s=Math.min(a,b), e=Math.max(a,b);
   let cnt=0;
-  for(let i=s;i<e;i++){
-    const k=segKey(lid,i);
-    if(!done[k]){ done[k]=true; cnt++; }
-  }
+  rangeSegs(line,a,b).forEach(i=>{ const k=segKey(lid,i); if(!done[k]){ done[k]=true; cnt++; } });
   return cnt;
 }
 function undoRange(lid,a,b){
-  const s=Math.min(a,b),e=Math.max(a,b);
-  for(let i=s;i<e;i++) done[segKey(lid,i)]=false;
+  const line=LINES.find(l=>l.id===lid);
+  if(!line) return;
+  rangeSegs(line,a,b).forEach(i=>{ done[segKey(lid,i)]=false; });
 }
 
 // ═══════════════════════════════════════════
@@ -723,10 +733,11 @@ function toggleSeg(lid,si,btn,e){
   btn.className='seg-btn'+(ok?' ok':'');
   const sp=btn.previousElementSibling;
   const l=LINES.find(x=>x.id===lid);
+  const from=l.stations[si].n, to=l.stations[(si+1)%l.stations.length].n;
   sp.className=ok?'seg-ok':'seg-no';
-  sp.textContent=(ok?'✓ ':'○ ')+l.stations[si].n+'→'+l.stations[si+1].n;
-  addLog(`[단일] ${l.name} — ${l.stations[si].n}→${l.stations[si+1].n} ${ok?'완료':'취소'}`);
-  toast(ok?`✓ ${l.stations[si].n}→${l.stations[si+1].n} 완료`:`${l.stations[si].n}→${l.stations[si+1].n} 취소`);
+  sp.textContent=(ok?'✓ ':'○ ')+from+'→'+to;
+  addLog(`[단일] ${l.name} — ${from}→${to} ${ok?'완료':'취소'}`);
+  toast(ok?`✓ ${from}→${to} 완료`:`${from}→${to} 취소`);
   updateAll();
 }
 function closePop(){
@@ -745,8 +756,21 @@ function addLog(txt){
 }
 function renderLog(){
   const el=document.getElementById('log-list');
-  if(!logs.length){el.innerHTML='<div class="log-empty">아직 기록이 없습니다.</div>';return;}
-  el.innerHTML=logs.map(e=>`<div class="log-item"><div class="log-t">${e.t}</div><div class="log-m">${e.txt}</div></div>`).join('');
+  el.innerHTML='';
+  if(!logs.length){
+    const d=document.createElement('div');
+    d.className='log-empty';
+    d.textContent='아직 기록이 없습니다.';
+    el.appendChild(d);
+    return;
+  }
+  logs.forEach(e=>{
+    const item=document.createElement('div'); item.className='log-item';
+    const t=document.createElement('div'); t.className='log-t'; t.textContent=e.t;
+    const m=document.createElement('div'); m.className='log-m'; m.textContent=e.txt;
+    item.appendChild(t); item.appendChild(m);
+    el.appendChild(item);
+  });
 }
 
 // ═══════════════════════════════════════════
