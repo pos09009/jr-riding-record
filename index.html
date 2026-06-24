@@ -245,11 +245,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="srow"><label>도착역</label>
             <select id="s-to"><option value="">-- 도착역 --</option></select>
           </div>
+          <div class="srow" id="s-dir-row" style="display:none"><label>방향</label>
+            <select id="s-dir">
+              <option value="auto">짧은 쪽 (자동)</option>
+              <option value="cw">시계방향</option>
+              <option value="ccw">반시계방향</option>
+            </select>
+          </div>
           <button class="btn btn-p" onclick="doComplete()">✓ 탑승 완료</button>
           <button class="btn btn-d" onclick="doUndo()">✕ 구간 취소</button>
           <button class="btn btn-r" onclick="doReset()">⚠ 전체 초기화</button>
         </div>
-        <div class="mhint">출발↔도착 사이 모든 구간이 한번에 처리됩니다.<br>예) 도쿄 → 신주쿠 선택 시 중간 역 전부 완료.</div>
+        <div class="mhint">출발↔도착 사이 모든 구간이 한번에 처리됩니다.<br>예) 도쿄 → 신주쿠 선택 시 중간 역 전부 완료.<br>순환선(야마노테 등)은 방향(시계 外回り / 반시계 内回り)을 고를 수 있습니다.</div>
         <div class="mpanel">
           <h3>데이터 백업</h3>
           <button class="btn btn-g" onclick="doExport()">⬇ 기록 내보내기 (.json)</button>

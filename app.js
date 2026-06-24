@@ -44,9 +44,15 @@ function doneLines(){
   return LINES.filter(l=>{ const {d,tot}=lineDone(l); return d===tot; }).length;
 }
 
-function rangeSegs(line,a,b){
-  // a역→b역 사이 구간 인덱스 배열. 순환선은 더 짧은 호(arc)를 선택해
-  // 마지막 닫는 구간(끝역→첫역)도 도달 가능. 비순환선은 기존대로 min→max.
+function loopIncIsCCW(line){
+  // 인덱스 증가 방향이 지도상 반시계(CCW)인지 좌표로 판정(신발끈 공식). x=lng, y=lat.
+  let area=0, n=line.stations.length;
+  for(let i=0;i<n;i++){ const p=line.stations[i], q=line.stations[(i+1)%n]; area+=p.lng*q.lat-q.lng*p.lat; }
+  return area>0;
+}
+function rangeSegs(line,a,b,dir){
+  // a역→b역 사이 구간 인덱스 배열.
+  // 비순환선: min→max. 순환선: dir 'cw'/'ccw'면 그 방향, 아니면 더 짧은 호(arc).
   if(!line.loop){
     const s=Math.min(a,b),e=Math.max(a,b),out=[];
     for(let i=s;i<e;i++) out.push(i);
@@ -54,20 +60,24 @@ function rangeSegs(line,a,b){
   }
   const n=line.stations.length;
   const fwd=(from,to)=>{ const o=[]; for(let i=from;i!==to;i=(i+1)%n) o.push(i); return o; };
-  const f1=fwd(a,b), f2=fwd(b,a);
-  return f1.length<=f2.length?f1:f2;
+  const inc=fwd(a,b), dec=fwd(b,a);
+  if(dir==='cw'||dir==='ccw'){
+    // 인덱스 증가가 ccw면 ccw요청=inc, cw요청=dec / 인덱스 증가가 cw면 반대
+    return ((dir==='ccw')===loopIncIsCCW(line))?inc:dec;
+  }
+  return inc.length<=dec.length?inc:dec; // auto: 짧은 쪽
 }
-function completeRange(lid,a,b){
+function completeRange(lid,a,b,dir){
   const line=LINES.find(l=>l.id===lid);
   if(!line) return 0;
   let cnt=0;
-  rangeSegs(line,a,b).forEach(i=>{ const k=segKey(lid,i); if(!done[k]){ done[k]=true; cnt++; } });
+  rangeSegs(line,a,b,dir).forEach(i=>{ const k=segKey(lid,i); if(!done[k]){ done[k]=true; cnt++; } });
   return cnt;
 }
-function undoRange(lid,a,b){
+function undoRange(lid,a,b,dir){
   const line=LINES.find(l=>l.id===lid);
   if(!line) return;
-  rangeSegs(line,a,b).forEach(i=>{ done[segKey(lid,i)]=false; });
+  rangeSegs(line,a,b,dir).forEach(i=>{ done[segKey(lid,i)]=false; });
 }
 
 // ═══════════════════════════════════════════
@@ -555,8 +565,10 @@ function fillManualSelects(lid){
   const l=LINES.find(x=>x.id===lid);
   const fs=document.getElementById('s-from');
   const ts=document.getElementById('s-to');
+  const dirRow=document.getElementById('s-dir-row');
   fs.innerHTML='<option value="">-- 출발역 --</option>';
   ts.innerHTML='<option value="">-- 도착역 --</option>';
+  if(dirRow){ dirRow.style.display=(l&&l.loop)?'':'none'; if(l&&l.loop) document.getElementById('s-dir').value='auto'; }
   if(!l) return;
   document.getElementById('s-line').value=lid;
   l.stations.forEach((s,i)=>{
@@ -572,7 +584,8 @@ function doComplete(){
   if(!lid||isNaN(fi)||isNaN(ti)){toast('노선·출발역·도착역을 선택하세요','warn');return;}
   if(fi===ti){toast('출발역과 도착역이 같습니다','warn');return;}
   const l=LINES.find(x=>x.id===lid);
-  const cnt=completeRange(lid,fi,ti);
+  const dir=l.loop?document.getElementById('s-dir').value:undefined;
+  const cnt=completeRange(lid,fi,ti,dir);
   addLog(`[수동] ${l.name} — ${l.stations[fi].n}→${l.stations[ti].n} (${cnt}구간)`);
   toast(`✓ ${l.stations[fi].n}→${l.stations[ti].n} ${cnt}구간 완료!`);
   updateAll();
@@ -584,7 +597,8 @@ function doUndo(){
   const ti=parseInt(document.getElementById('s-to').value);
   if(!lid||isNaN(fi)||isNaN(ti)){toast('노선·출발역·도착역을 선택하세요','warn');return;}
   const l=LINES.find(x=>x.id===lid);
-  undoRange(lid,fi,ti);
+  const dir=l.loop?document.getElementById('s-dir').value:undefined;
+  undoRange(lid,fi,ti,dir);
   addLog(`[취소] ${l.name} — ${l.stations[fi].n}→${l.stations[ti].n}`);
   toast('구간 취소 완료','warn');
   updateAll();
