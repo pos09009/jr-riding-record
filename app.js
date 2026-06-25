@@ -160,56 +160,22 @@ function lineCard(l){
   const div=document.createElement('div');
   div.className='lcard'+(selLineId===l.id?' sel':'');
   div.style.setProperty('--lc',l.color);
-
-  const top=document.createElement('div');
-  top.className='lc-top';
-  const name=document.createElement('div');
-  name.className='lc-name';
-  if(l.code) name.appendChild(lineBadge(l));
-  name.appendChild(document.createTextNode(l.name));
-  const pctEl=document.createElement('div');
-  pctEl.className='lc-pct';
-  pctEl.textContent=pct+'%';
-  top.appendChild(name);
-  top.appendChild(pctEl);
-
-  const bar=document.createElement('div');
-  bar.className='lc-bar';
-  const barFill=document.createElement('div');
-  barFill.className='lc-bar-f';
-  barFill.style.width=pct+'%';
-  barFill.style.background=l.color;
-  bar.appendChild(barFill);
-
-  const meta=document.createElement('div');
-  meta.className='lc-meta';
-  meta.textContent=`${d}/${tot} 구간 · ${l.stations.length}역`;
-
-  div.appendChild(top);
-  div.appendChild(bar);
-  div.appendChild(meta);
+  const badge=l.code?`<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`:'';
+  div.innerHTML=`
+    <div class="lc-top">
+      <div class="lc-name">${badge}${l.name}</div>
+      <div class="lc-pct">${pct}%</div>
+    </div>
+    <div class="lc-bar"><div class="lc-bar-f" style="width:${pct}%;background:${l.color}"></div></div>
+    <div class="lc-meta">${d}/${tot} 구간 · ${l.stations.length}역</div>
+  `;
   div.onclick=()=>selectLine(l.id);
   return div;
 }
 
-function lineBadge(l){
-  const badge=document.createElement('span');
-  badge.className='lc-code';
-  badge.style.borderColor=l.color;
-  badge.textContent=l.code;
-  return badge;
-}
-
-function makeOption(value,label){
-  const opt=document.createElement('option');
-  opt.value=value;
-  opt.textContent=label;
-  return opt;
-}
-
 function renderLinesList(){
   const el=document.getElementById('lines-list');
-  el.replaceChildren();
+  el.innerHTML='';
   const q=searchQuery;
 
   // 검색어 없음 → 전체 노선 카드
@@ -233,21 +199,13 @@ function renderLinesList(){
       const row=document.createElement('div');
       row.className='sresult';
       row.style.setProperty('--lc',m.l.color);
-      const body=document.createElement('div');
-      const st=document.createElement('div');
-      st.className='sresult-st';
-      st.appendChild(document.createTextNode(m.s.n));
-      const mark=document.createElement('span');
-      mark.style.color=ok?'var(--accent3)':'var(--muted)';
-      mark.style.fontSize='10px';
-      mark.textContent=' '+(ok?'✓':'○');
-      st.appendChild(mark);
-      const line=document.createElement('div');
-      line.className='sresult-ln';
-      line.textContent=m.l.name;
-      body.appendChild(st);
-      body.appendChild(line);
-      row.appendChild(body);
+      row.innerHTML=`
+        <div>
+          <div class="sresult-st">${m.s.n}
+            <span style="color:${ok?'var(--accent3)':'var(--muted)'};font-size:10px;"> ${ok?'✓':'○'}</span>
+          </div>
+          <div class="sresult-ln">${m.l.name}</div>
+        </div>`;
       row.onclick=()=>gotoStation(m.l.id,m.i);
       el.appendChild(row);
     });
@@ -362,11 +320,6 @@ function resizeCanvas(){
   canvas.height=wrap.clientHeight;
 }
 
-function segmentPairKey(a,b){
-  const ka=stationKey(a), kb=stationKey(b);
-  return ka<kb ? ka+'|'+kb : kb+'|'+ka;
-}
-
 function drawMap(){
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
@@ -391,7 +344,8 @@ function drawMap(){
     const tot=l.stations.length-1+(l.loop?1:0);
     for(let i=0;i<tot;i++){
       const a=l.stations[i], b=l.stations[(i+1)%l.stations.length];
-      const pk=segmentPairKey(a,b);
+      const ka=stationKey(a), kb=stationKey(b);
+      const pk = ka<kb ? ka+'|'+kb : kb+'|'+ka;
       if(!pairGroups[pk]) pairGroups[pk]=[];
       if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
     }
@@ -503,6 +457,20 @@ function drawLineSegs(l,doneOnly){
     const b=l.stations[(i+1)%l.stations.length];
     const p1=geo2px(a.lat,a.lng);
     const p2=geo2px(b.lat,b.lng);
+    // 평행 노선 분리: 같은 두 역을 잇는 노선이 여럿이면 직교 방향으로 나란히 띄움.
+    // 직교 방향은 정준 순서(작은 좌표키→큰 좌표키)로 고정 → 노선별 진행방향이 반대여도 상쇄되지 않고 같은 쪽 기준으로 분리.
+    let ox=0,oy=0;
+    const ka=stationKey(a), kb=stationKey(b);
+    const grp=pairGroups[ka<kb?ka+'|'+kb:kb+'|'+ka];
+    if(grp&&grp.length>1){
+      const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
+      const cp1 = ka<kb ? p1 : p2, cp2 = ka<kb ? p2 : p1; // 정준 방향 픽셀
+      const dx=cp2.x-cp1.x, dy=cp2.y-cp1.y, len=Math.hypot(dx,dy)||1;
+      ox=-dy/len*off; oy=dx/len*off;
+    }
+    ctx.beginPath();
+    ctx.moveTo(p1.x+ox,p1.y+oy);
+    ctx.lineTo(p2.x+ox,p2.y+oy);
     if(isDone){
       // 완료: 노선 색 진하게 + 글로우
       ctx.strokeStyle=l.color;
@@ -518,17 +486,6 @@ function drawLineSegs(l,doneOnly){
       ctx.shadowBlur=0;
     }
     ctx.lineCap='round';
-    // 평행 노선 분리: 같은 두 역을 직접 잇는 노선이 여럿이면 직교 방향으로 나란히 띄움
-    let ox=0,oy=0;
-    const grp=pairGroups[segmentPairKey(a,b)];
-    if(grp&&grp.length>1){
-      const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
-      const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
-      ox=-dy/len*off; oy=dx/len*off;
-    }
-    ctx.beginPath();
-    ctx.moveTo(p1.x+ox,p1.y+oy);
-    ctx.lineTo(p2.x+ox,p2.y+oy);
     ctx.stroke();
     ctx.globalAlpha=1;
     ctx.shadowBlur=0;
@@ -549,7 +506,7 @@ function resetView(){
 function zoomAt(f,px,py){
   const wrap=document.getElementById('map-wrap');
   const W=wrap.clientWidth, H=wrap.clientHeight;
-  const ns=Math.max(0.5,Math.min(25,vscale*f));
+  const ns=Math.max(0.5,Math.min(80,vscale*f));
   // 고정점이 줌 후에도 같은 화면 위치에 오도록 offset 보정
   vx = px - W/2 - (px - W/2 - vx)*ns/vscale;
   vy = py - H/2 - (py - H/2 - vy)*ns/vscale;
@@ -716,8 +673,8 @@ function tab(name){
 
 function fillLineSelect(){
   const s=document.getElementById('s-line');
-  s.replaceChildren(makeOption('','-- 노선 선택 --'));
-  LINES.forEach(l=>s.appendChild(makeOption(l.id,l.name)));
+  s.innerHTML='<option value="">-- 노선 선택 --</option>';
+  LINES.forEach(l=>{ s.innerHTML+=`<option value="${l.id}">${l.name}</option>`; });
 }
 
 function onLineSel(){
@@ -731,14 +688,14 @@ function fillManualSelects(lid){
   const fs=document.getElementById('s-from');
   const ts=document.getElementById('s-to');
   const dirRow=document.getElementById('s-dir-row');
-  fs.replaceChildren(makeOption('','-- 출발역 --'));
-  ts.replaceChildren(makeOption('','-- 도착역 --'));
+  fs.innerHTML='<option value="">-- 출발역 --</option>';
+  ts.innerHTML='<option value="">-- 도착역 --</option>';
   if(dirRow){ dirRow.style.display=(l&&l.loop)?'':'none'; if(l&&l.loop) document.getElementById('s-dir').value='auto'; }
   if(!l) return;
   document.getElementById('s-line').value=lid;
   l.stations.forEach((s,i)=>{
-    fs.appendChild(makeOption(String(i),s.n));
-    ts.appendChild(makeOption(String(i),s.n));
+    fs.innerHTML+=`<option value="${i}">${s.n}</option>`;
+    ts.innerHTML+=`<option value="${i}">${s.n}</option>`;
   });
 }
 
@@ -772,7 +729,7 @@ function doUndo(){
 function doReset(){
   if(!confirm('정말 전체 초기화할까요?')) return;
   done={};logs=[];
-  document.getElementById('log-list').replaceChildren();
+  document.getElementById('log-list').innerHTML='';
   toast('초기화 완료','warn');
   updateAll();
 }
@@ -825,7 +782,7 @@ function startGPS(){
   document.getElementById('gbtn').classList.add('on');
   document.getElementById('gdot').classList.add('on');
   document.getElementById('gstat').textContent='GPS 활성 — 역 감지 중...';
-  document.getElementById('gslog-list').replaceChildren();
+  document.getElementById('gslog-list').innerHTML='';
   watchId=navigator.geolocation.watchPosition(onGps,onGpsErr,{enableHighAccuracy:true,maximumAge:5000,timeout:10000});
 }
 function stopGPS(){
@@ -856,10 +813,8 @@ function onGps(pos){
         const cnt=completeRange(best.l.id,lastGpsSt.i,best.i);
         if(cnt>0){
           const msg=`${lastGpsSt.n}→${nm} (${cnt}구간)`;
-          const item=document.createElement('div');
-          item.className='gslog-item';
-          item.textContent='✓ '+msg;
-          document.getElementById('gslog-list').prepend(item);
+          document.getElementById('gslog-list').innerHTML=
+            `<div class="gslog-item">✓ ${msg}</div>`+document.getElementById('gslog-list').innerHTML;
           addLog(`[GPS] ${best.l.name} — ${msg}`);
           toast(`📍 ${nm} 도착 — ${cnt}구간 완료`);
           updateAll();
@@ -887,7 +842,7 @@ function showStationPopup(st){
   document.getElementById('pop-sub').textContent =
     lids.length>1 ? `${lids.length}개 노선 환승역` : ((LINES.find(l=>l.id===lids[0])||{}).name||'');
   const el=document.getElementById('pop-segs');
-  el.replaceChildren();
+  el.innerHTML='';
   // 이 역을 지나는 모든 노선을, 각 노선의 인접 구간 토글과 함께 표시
   st.refs.forEach(ref=>{
     const l=LINES.find(x=>x.id===ref.lid); if(!l) return;
@@ -898,31 +853,15 @@ function showStationPopup(st){
     if(l.loop&&si===0) segs.push({i:l.stations.length-1,from:l.stations[l.stations.length-1].n,to:l.stations[0].n});
     const head=document.createElement('div');
     head.className='pop-line';
-    if(l.code){
-      head.appendChild(lineBadge(l));
-    }else{
-      const dot=document.createElement('span');
-      dot.className='pop-line-dot';
-      dot.style.background=l.color;
-      head.appendChild(dot);
-    }
-    const label=document.createElement('span');
-    label.textContent=l.name;
-    head.appendChild(label);
+    const badge = l.code ? `<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`
+                         : `<span class="pop-line-dot" style="background:${l.color}"></span>`;
+    head.innerHTML = badge + `<span>${l.name}</span>`;
     el.appendChild(head);
     segs.forEach(sg=>{
       const ok=!!done[segKey(l.id,sg.i)];
       const row=document.createElement('div');
       row.className='pop-seg';
-      const span=document.createElement('span');
-      span.className=ok?'seg-ok':'seg-no';
-      span.textContent=`${ok?'✓':'○'} ${sg.from}→${sg.to}`;
-      const btn=document.createElement('button');
-      btn.className='seg-btn'+(ok?' ok':'');
-      btn.textContent=ok?'취소':'완료';
-      btn.addEventListener('click',e=>toggleSeg(l.id,sg.i,btn,e));
-      row.appendChild(span);
-      row.appendChild(btn);
+      row.innerHTML=`<span class="${ok?'seg-ok':'seg-no'}">${ok?'✓':'○'} ${sg.from}→${sg.to}</span><button class="seg-btn${ok?' ok':''}" onclick="toggleSeg('${l.id}',${sg.i},this,event)">${ok?'취소':'완료'}</button>`;
       el.appendChild(row);
     });
   });
@@ -961,7 +900,7 @@ function addLog(txt){
 }
 function renderLog(){
   const el=document.getElementById('log-list');
-  el.replaceChildren();
+  el.innerHTML='';
   if(!logs.length){
     const d=document.createElement('div');
     d.className='log-empty';
