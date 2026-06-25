@@ -24,12 +24,49 @@ const LINE_META = {
 };
 LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; } });
 
+// 환승역 통합: 같은 이름 + 근접(300m 이내) 역들을 한 좌표로 스냅 → 지도에 단일 점.
+// 무사시코스기(난부↔요코스카 승강장 ~430m)처럼 일부러 떨어진 건 임계값으로 분리 유지.
+// 좌표만 통일하며 구간 기록은 노선ID+인덱스라 영향 없음.
+function unifyStations(){
+  const MERGE_M=300;
+  const byName={};
+  LINES.forEach(l=>l.stations.forEach(s=>{ (byName[s.n]=byName[s.n]||[]).push(s); }));
+  Object.values(byName).forEach(arr=>{
+    if(arr.length<2) return;
+    const clusters=[];
+    arr.forEach(s=>{
+      const c=clusters.find(cl=>Math.hypot((cl.lat-s.lat)*111000,(cl.lng-s.lng)*90000)<MERGE_M);
+      if(c) c.members.push(s); else clusters.push({lat:s.lat,lng:s.lng,members:[s]});
+    });
+    clusters.forEach(cl=>{
+      if(cl.members.length<2) return;
+      const lat=cl.members.reduce((a,s)=>a+s.lat,0)/cl.members.length;
+      const lng=cl.members.reduce((a,s)=>a+s.lng,0)/cl.members.length;
+      cl.members.forEach(s=>{ s.lat=lat; s.lng=lng; });
+    });
+  });
+}
+unifyStations();
+
+// 역 인덱스: 좌표키 → {name,lat,lng, refs:[{lid,idx}]}. 환승역 판별 + 클릭 팝업용. unify 후 1회.
+const STATION_INDEX={};
+function stationKey(s){ return Math.round(s.lat*1000)+','+Math.round(s.lng*1000); }
+function isInterchange(entry){ return !!entry && new Set(entry.refs.map(r=>r.lid)).size>=2; }
+(function buildStationIndex(){
+  LINES.forEach(l=>l.stations.forEach((s,i)=>{
+    const key=stationKey(s);
+    if(!STATION_INDEX[key]) STATION_INDEX[key]={name:s.n,lat:s.lat,lng:s.lng,refs:[]};
+    STATION_INDEX[key].refs.push({lid:l.id,idx:i});
+  }));
+})();
+
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
 let done = {};
 let logs = [];
 let selLineId = null;
+let viewMode = 'all'; // 'all' 전체 | 'sel' 선택 노선만 | 'trans' 선택+환승
 let searchQuery = '';
 let gpsOn = false;
 let watchId = null;
@@ -218,7 +255,8 @@ function gotoStation(lid,idx){
   fillManualSelects(lid);
   const s=l.stations[idx];
   focusStation(s.lat,s.lng,18);
-  showPopup(l,idx);
+  const st=STATION_INDEX[stationKey(s)];
+  if(st) showStationPopup(st);
 }
 
 // ═══════════════════════════════════════════
@@ -238,6 +276,7 @@ function hexA(hex,a){
 
 // view state
 let vx=0,vy=0,vscale=1; // offset & scale
+let pairGroups={}; // 평행 구간 그룹: "좌표키A|좌표키B" → [노선id...]. drawMap에서 매 프레임 갱신
 let dragging=false,dragSx=0,dragSy=0,dragVx=0,dragVy=0;
 
 // geographic bounds of all stations
@@ -295,17 +334,35 @@ function drawMap(){
   for(let i=0;i<W;i+=40){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
   for(let i=0;i<H;i+=40){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(W,i);ctx.stroke();}
 
-  // draw lines (undone first, then done on top)
-  LINES.forEach(l=>drawLineSegs(l,false));
-  LINES.forEach(l=>drawLineSegs(l,true));
+  // 뷰 모드 반영: 표시할 노선만 추림(전체/선택/+환승)
+  const vis=visibleLineSet();
+  const drawLines = vis ? LINES.filter(l=>vis.has(l.id)) : LINES;
 
-  // ── 역 마커 그리기 (모든 역을 한번에, 중복 좌표는 한 점으로) ──
-  const stationPts={}; // "x,y" → {x,y,color,isDone,names:Set}
-  LINES.forEach(l=>l.stations.forEach((s,i)=>{
+  // 평행 구간 그룹화: 같은 두 역(좌표키 쌍)을 잇는 노선들 → drawLineSegs에서 나란히 offset
+  pairGroups={};
+  drawLines.forEach(l=>{
+    const tot=l.stations.length-1+(l.loop?1:0);
+    for(let i=0;i<tot;i++){
+      const a=l.stations[i], b=l.stations[(i+1)%l.stations.length];
+      const ka=stationKey(a), kb=stationKey(b);
+      const pk = ka<kb ? ka+'|'+kb : kb+'|'+ka;
+      if(!pairGroups[pk]) pairGroups[pk]=[];
+      if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
+    }
+  });
+  Object.values(pairGroups).forEach(g=>g.sort());
+
+  // draw lines (undone first, then done on top)
+  drawLines.forEach(l=>drawLineSegs(l,false));
+  drawLines.forEach(l=>drawLineSegs(l,true));
+
+  // ── 역 마커 그리기 (중복 좌표는 한 점으로) ──
+  const stationPts={}; // "x,y" → {x,y,color,isDone,name}
+  drawLines.forEach(l=>l.stations.forEach((s,i)=>{
     const isDone=isStDone(l,i);
     const {x,y}=geo2px(s.lat,s.lng);
     const key=Math.round(s.lat*1000)+','+Math.round(s.lng*1000);
-    if(!stationPts[key]) stationPts[key]={x,y,color:l.color,isDone,name:s.n};
+    if(!stationPts[key]) stationPts[key]={x,y,color:l.color,isDone,name:s.n,xfer:isInterchange(STATION_INDEX[key])};
     // 완료된 노선의 색을 우선 표시
     if(isDone){ stationPts[key].isDone=true; stationPts[key].color=l.color; }
   }));
@@ -314,6 +371,14 @@ function drawMap(){
 
   // 마커
   pts.forEach(p=>{
+    if(p.xfer){
+      // 환승역: 흰 원 + 진한 테두리 (노선도 환승 표기 스타일)
+      const r=p.isDone?5.5:4.5;
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);
+      ctx.fillStyle='#ffffff';ctx.fill();
+      ctx.lineWidth=2;ctx.strokeStyle='#11151c';ctx.stroke();
+      return;
+    }
     const r=p.isDone?4.5:3;
     ctx.beginPath();
     ctx.arc(p.x,p.y,r,0,Math.PI*2);
@@ -328,8 +393,8 @@ function drawMap(){
     }
   });
 
-  // ── 라벨 (충돌 회피) — 줌 1.4 이상일 때만 ──
-  if(vscale>=1.4){
+  // ── 라벨 (충돌 회피) — 줌 1.4 이상, 또는 선택/환승 모드일 땐 항상 ──
+  if(vscale>=1.4 || vis){
     const fontSize=Math.max(9,Math.min(14,8+vscale*0.7));
     ctx.font=`${fontSize}px 'Noto Sans KR',sans-serif`;
     ctx.textBaseline='middle';
@@ -392,9 +457,18 @@ function drawLineSegs(l,doneOnly){
     const b=l.stations[(i+1)%l.stations.length];
     const p1=geo2px(a.lat,a.lng);
     const p2=geo2px(b.lat,b.lng);
+    // 평행 노선 분리: 같은 두 역을 잇는 노선이 여럿이면 직교 방향으로 나란히 띄움
+    let ox=0,oy=0;
+    const ka=stationKey(a), kb=stationKey(b);
+    const grp=pairGroups[ka<kb?ka+'|'+kb:kb+'|'+ka];
+    if(grp&&grp.length>1){
+      const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
+      const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+      ox=-dy/len*off; oy=dx/len*off;
+    }
     ctx.beginPath();
-    ctx.moveTo(p1.x,p1.y);
-    ctx.lineTo(p2.x,p2.y);
+    ctx.moveTo(p1.x+ox,p1.y+oy);
+    ctx.lineTo(p2.x+ox,p2.y+oy);
     if(isDone){
       // 완료: 노선 색 진하게 + 글로우
       ctx.strokeStyle=l.color;
@@ -527,14 +601,16 @@ function handleMapClick(clientX,clientY){
   const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
   const cx=(clientX-rect.left)*sx;
   const cy=(clientY-rect.top)*sy;
-  // find nearest station within threshold
+  // 가장 가까운 역(좌표키 기준) — 뷰모드에 보이는 노선만 대상
+  const vis=visibleLineSet();
   let best=null,bestD=Infinity;
-  LINES.forEach(l=>l.stations.forEach((s,i)=>{
-    const p=geo2px(s.lat,s.lng);
+  Object.values(STATION_INDEX).forEach(st=>{
+    if(vis && !st.refs.some(r=>vis.has(r.lid))) return;
+    const p=geo2px(st.lat,st.lng);
     const d=Math.hypot(p.x-cx,p.y-cy);
-    if(d<bestD){bestD=d;best={l,i,s};}
-  }));
-  if(best&&bestD<Math.max(18,12*Math.min(vscale,2))) showPopup(best.l,best.i);
+    if(d<bestD){bestD=d;best=st;}
+  });
+  if(best&&bestD<Math.max(18,12*Math.min(vscale,2))) showStationPopup(best);
 }
 
 function fitLine(l){
@@ -557,6 +633,25 @@ function fitLine(l){
 // ═══════════════════════════════════════════
 // INTERACTIONS
 // ═══════════════════════════════════════════
+function visibleLineSet(){
+  // null = 전부 표시. Set = 그 노선들만 표시.
+  if(viewMode==='all' || !selLineId) return null;
+  const set=new Set([selLineId]);
+  if(viewMode==='trans'){
+    const sel=LINES.find(l=>l.id===selLineId);
+    if(sel){
+      const names=new Set(sel.stations.map(s=>s.n));
+      LINES.forEach(l=>{ if(l.stations.some(s=>names.has(s.n))) set.add(l.id); });
+    }
+  }
+  return set;
+}
+function setViewMode(m){
+  if((m==='sel'||m==='trans') && !selLineId){ toast('지도에서 볼 노선을 먼저 선택하세요','warn'); return; }
+  viewMode=m;
+  document.querySelectorAll('.mm-btn').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  drawMap();
+}
 function selectLine(lid){
   selLineId=lid;
   const l=LINES.find(x=>x.id===lid);
@@ -581,7 +676,9 @@ function fillLineSelect(){
 }
 
 function onLineSel(){
-  fillManualSelects(document.getElementById('s-line').value);
+  const lid=document.getElementById('s-line').value;
+  if(lid) selectLine(lid);          // 카드 선택과 동일하게 해당 노선으로 클로즈업
+  else fillManualSelects('');
 }
 
 function fillManualSelects(lid){
@@ -737,26 +834,34 @@ function dist(a1,o1,a2,o2){
 // ═══════════════════════════════════════════
 // POPUP
 // ═══════════════════════════════════════════
-function showPopup(l,si){
-  document.getElementById('pop-title').textContent=l.stations[si].n+'역';
-  document.getElementById('pop-sub').textContent=l.name;
+function showStationPopup(st){
+  document.getElementById('pop-title').textContent=st.name+'역';
+  const lids=[...new Set(st.refs.map(r=>r.lid))];
+  document.getElementById('pop-sub').textContent =
+    lids.length>1 ? `${lids.length}개 노선 환승역` : ((LINES.find(l=>l.id===lids[0])||{}).name||'');
   const el=document.getElementById('pop-segs');
   el.innerHTML='';
-  const segs=[];
-  if(si>0) segs.push({i:si-1,from:l.stations[si-1].n,to:l.stations[si].n});
-  if(si<l.stations.length-1) segs.push({i:si,from:l.stations[si].n,to:l.stations[si+1].n});
-  if(l.loop&&si===0) segs.push({i:l.stations.length-1,from:l.stations[l.stations.length-1].n,to:l.stations[0].n});
-  segs.forEach(sg=>{
-    const k=segKey(l.id,sg.i);
-    const ok=!!done[k];
-    const row=document.createElement('div');
-    row.className='pop-seg';
-    row.innerHTML=`
-      <span class="${ok?'seg-ok':'seg-no'}">${ok?'✓':'○'} ${sg.from}→${sg.to}</span>
-      <button class="seg-btn${ok?' ok':''}" onclick="toggleSeg('${l.id}',${sg.i},this,event)">
-        ${ok?'취소':'완료'}
-      </button>`;
-    el.appendChild(row);
+  // 이 역을 지나는 모든 노선을, 각 노선의 인접 구간 토글과 함께 표시
+  st.refs.forEach(ref=>{
+    const l=LINES.find(x=>x.id===ref.lid); if(!l) return;
+    const si=ref.idx;
+    const segs=[];
+    if(si>0) segs.push({i:si-1,from:l.stations[si-1].n,to:l.stations[si].n});
+    if(si<l.stations.length-1) segs.push({i:si,from:l.stations[si].n,to:l.stations[si+1].n});
+    if(l.loop&&si===0) segs.push({i:l.stations.length-1,from:l.stations[l.stations.length-1].n,to:l.stations[0].n});
+    const head=document.createElement('div');
+    head.className='pop-line';
+    const badge = l.code ? `<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`
+                         : `<span class="pop-line-dot" style="background:${l.color}"></span>`;
+    head.innerHTML = badge + `<span>${l.name}</span>`;
+    el.appendChild(head);
+    segs.forEach(sg=>{
+      const ok=!!done[segKey(l.id,sg.i)];
+      const row=document.createElement('div');
+      row.className='pop-seg';
+      row.innerHTML=`<span class="${ok?'seg-ok':'seg-no'}">${ok?'✓':'○'} ${sg.from}→${sg.to}</span><button class="seg-btn${ok?' ok':''}" onclick="toggleSeg('${l.id}',${sg.i},this,event)">${ok?'취소':'완료'}</button>`;
+      el.appendChild(row);
+    });
   });
   document.getElementById('pop-bg').classList.add('on');
   document.getElementById('popup').classList.add('on');

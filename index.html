@@ -151,6 +151,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 /* map controls */
 .map-ctrl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:5px;z-index:10;}
+.map-mode{position:absolute;left:8px;top:8px;display:flex;z-index:10;background:rgba(17,24,39,.92);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.mm-btn{background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-size:10px;font-weight:700;padding:5px 9px;cursor:pointer;}
+.mm-btn:last-child{border-right:none;}
+.mm-btn.on{background:var(--accent);color:#06090f;}
 .mc-btn{width:32px;height:32px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
 .mc-btn:hover{border-color:var(--accent);color:var(--accent);}
 
@@ -183,9 +187,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 #popup.on{display:block;}
 .pop-title{font-size:16px;font-weight:700;margin-bottom:2px;}
 .pop-sub{font-size:10px;color:var(--muted);margin-bottom:12px;}
-.pop-segs{max-height:180px;overflow-y:auto;margin-bottom:12px;}
+.pop-segs{max-height:240px;overflow-y:auto;margin-bottom:12px;}
 .pop-seg{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;}
 .pop-seg:last-child{border-bottom:none;}
+.pop-line{display:flex;align-items:center;gap:7px;margin:10px 0 2px;font-size:11px;font-weight:700;color:var(--text);}
+.pop-line:first-child{margin-top:0;}
+.pop-line-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .seg-ok{color:var(--accent3);}
 .seg-no{color:var(--muted);}
 .seg-btn{padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text);font-size:9px;cursor:pointer;transition:all .2s;}
@@ -296,6 +303,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <button class="mc-btn" onclick="zoom(1.3)">+</button>
         <button class="mc-btn" onclick="zoom(0.77)">−</button>
         <button class="mc-btn" onclick="resetView()" title="전체보기">⊙</button>
+      </div>
+      <div class="map-mode">
+        <button class="mm-btn on" data-m="all" onclick="setViewMode('all')" title="전체 노선 보기">전체</button>
+        <button class="mm-btn" data-m="sel" onclick="setViewMode('sel')" title="선택 노선만 보기">선택 노선만</button>
+        <button class="mm-btn" data-m="trans" onclick="setViewMode('trans')" title="환승 가능 노선 같이 보기">환승 포함</button>
       </div>
       <div class="map-legend">
         <div class="leg-item"><div class="leg-dot" style="background:var(--accent3)"></div>완료 구간 (진하게)</div>
