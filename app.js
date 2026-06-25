@@ -362,47 +362,6 @@ function resizeCanvas(){
   canvas.height=wrap.clientHeight;
 }
 
-function inclusivePath(line,aIdx,bIdx){
-  if(aIdx===bIdx) return [line.stations[aIdx]];
-  if(line.loop){
-    const n=line.stations.length;
-    const fwd=[];
-    for(let i=aIdx;;i=(i+1)%n){
-      fwd.push(line.stations[i]);
-      if(i===bIdx) break;
-    }
-    const rev=[];
-    for(let i=aIdx;;i=(i-1+n)%n){
-      rev.push(line.stations[i]);
-      if(i===bIdx) break;
-    }
-    return fwd.length<=rev.length?fwd:rev;
-  }
-  const s=Math.min(aIdx,bIdx), e=Math.max(aIdx,bIdx);
-  const path=line.stations.slice(s,e+1);
-  return aIdx<=bIdx?path:path.reverse();
-}
-
-function sharedStationRoute(line,a,b){
-  let best=null;
-  LINES.forEach(other=>{
-    if(other.id===line.id) return;
-    const ai=other.stations.findIndex(s=>s.n===a.n);
-    const bi=other.stations.findIndex(s=>s.n===b.n);
-    if(ai<0||bi<0) return;
-    const path=inclusivePath(other,ai,bi);
-    if(path.length<=2) return;
-    if(!best || path.length<best.length) best=path;
-  });
-  return best;
-}
-
-function segmentRoute(line,idx){
-  const a=line.stations[idx];
-  const b=line.stations[(idx+1)%line.stations.length];
-  return sharedStationRoute(line,a,b) || [a,b];
-}
-
 function segmentPairKey(a,b){
   const ka=stationKey(a), kb=stationKey(b);
   return ka<kb ? ka+'|'+kb : kb+'|'+ka;
@@ -431,12 +390,10 @@ function drawMap(){
   drawLines.forEach(l=>{
     const tot=l.stations.length-1+(l.loop?1:0);
     for(let i=0;i<tot;i++){
-      const route=segmentRoute(l,i);
-      for(let j=0;j<route.length-1;j++){
-        const pk=segmentPairKey(route[j],route[j+1]);
-        if(!pairGroups[pk]) pairGroups[pk]=[];
-        if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
-      }
+      const a=l.stations[i], b=l.stations[(i+1)%l.stations.length];
+      const pk=segmentPairKey(a,b);
+      if(!pairGroups[pk]) pairGroups[pk]=[];
+      if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
     }
   });
   Object.values(pairGroups).forEach(g=>g.sort());
@@ -542,7 +499,10 @@ function drawLineSegs(l,doneOnly){
   for(let i=0;i<tot;i++){
     const isDone=!!done[segKey(l.id,i)];
     if(doneOnly!==isDone) continue;
-    const route=segmentRoute(l,i);
+    const a=l.stations[i];
+    const b=l.stations[(i+1)%l.stations.length];
+    const p1=geo2px(a.lat,a.lng);
+    const p2=geo2px(b.lat,b.lng);
     if(isDone){
       // 완료: 노선 색 진하게 + 글로우
       ctx.strokeStyle=l.color;
@@ -558,23 +518,18 @@ function drawLineSegs(l,doneOnly){
       ctx.shadowBlur=0;
     }
     ctx.lineCap='round';
-    for(let j=0;j<route.length-1;j++){
-      const a=route[j], b=route[j+1];
-      const p1=geo2px(a.lat,a.lng);
-      const p2=geo2px(b.lat,b.lng);
-      // 평행 노선 분리: 같은 물리 경로를 공유하면 직교 방향으로 나란히 띄움
-      let ox=0,oy=0;
-      const grp=pairGroups[segmentPairKey(a,b)];
-      if(grp&&grp.length>1){
-        const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
-        const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
-        ox=-dy/len*off; oy=dx/len*off;
-      }
-      ctx.beginPath();
-      ctx.moveTo(p1.x+ox,p1.y+oy);
-      ctx.lineTo(p2.x+ox,p2.y+oy);
-      ctx.stroke();
+    // 평행 노선 분리: 같은 두 역을 직접 잇는 노선이 여럿이면 직교 방향으로 나란히 띄움
+    let ox=0,oy=0;
+    const grp=pairGroups[segmentPairKey(a,b)];
+    if(grp&&grp.length>1){
+      const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
+      const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+      ox=-dy/len*off; oy=dx/len*off;
     }
+    ctx.beginPath();
+    ctx.moveTo(p1.x+ox,p1.y+oy);
+    ctx.lineTo(p2.x+ox,p2.y+oy);
+    ctx.stroke();
     ctx.globalAlpha=1;
     ctx.shadowBlur=0;
   }
