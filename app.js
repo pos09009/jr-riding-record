@@ -160,22 +160,56 @@ function lineCard(l){
   const div=document.createElement('div');
   div.className='lcard'+(selLineId===l.id?' sel':'');
   div.style.setProperty('--lc',l.color);
-  const badge=l.code?`<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`:'';
-  div.innerHTML=`
-    <div class="lc-top">
-      <div class="lc-name">${badge}${l.name}</div>
-      <div class="lc-pct">${pct}%</div>
-    </div>
-    <div class="lc-bar"><div class="lc-bar-f" style="width:${pct}%;background:${l.color}"></div></div>
-    <div class="lc-meta">${d}/${tot} 구간 · ${l.stations.length}역</div>
-  `;
+
+  const top=document.createElement('div');
+  top.className='lc-top';
+  const name=document.createElement('div');
+  name.className='lc-name';
+  if(l.code) name.appendChild(lineBadge(l));
+  name.appendChild(document.createTextNode(l.name));
+  const pctEl=document.createElement('div');
+  pctEl.className='lc-pct';
+  pctEl.textContent=pct+'%';
+  top.appendChild(name);
+  top.appendChild(pctEl);
+
+  const bar=document.createElement('div');
+  bar.className='lc-bar';
+  const barFill=document.createElement('div');
+  barFill.className='lc-bar-f';
+  barFill.style.width=pct+'%';
+  barFill.style.background=l.color;
+  bar.appendChild(barFill);
+
+  const meta=document.createElement('div');
+  meta.className='lc-meta';
+  meta.textContent=`${d}/${tot} 구간 · ${l.stations.length}역`;
+
+  div.appendChild(top);
+  div.appendChild(bar);
+  div.appendChild(meta);
   div.onclick=()=>selectLine(l.id);
   return div;
 }
 
+function lineBadge(l){
+  const badge=document.createElement('span');
+  badge.className='lc-code';
+  badge.style.borderColor=l.color;
+  badge.textContent=l.code;
+  return badge;
+}
+
+function makeOption(value,label){
+  const opt=document.createElement('option');
+  opt.value=value;
+  opt.textContent=label;
+  return opt;
+}
+
 function renderLinesList(){
   const el=document.getElementById('lines-list');
-  el.innerHTML='';
+  el.replaceChildren();
   const q=searchQuery;
 
   // 검색어 없음 → 전체 노선 카드
@@ -199,13 +233,21 @@ function renderLinesList(){
       const row=document.createElement('div');
       row.className='sresult';
       row.style.setProperty('--lc',m.l.color);
-      row.innerHTML=`
-        <div>
-          <div class="sresult-st">${m.s.n}
-            <span style="color:${ok?'var(--accent3)':'var(--muted)'};font-size:10px;"> ${ok?'✓':'○'}</span>
-          </div>
-          <div class="sresult-ln">${m.l.name}</div>
-        </div>`;
+      const body=document.createElement('div');
+      const st=document.createElement('div');
+      st.className='sresult-st';
+      st.appendChild(document.createTextNode(m.s.n));
+      const mark=document.createElement('span');
+      mark.style.color=ok?'var(--accent3)':'var(--muted)';
+      mark.style.fontSize='10px';
+      mark.textContent=' '+(ok?'✓':'○');
+      st.appendChild(mark);
+      const line=document.createElement('div');
+      line.className='sresult-ln';
+      line.textContent=m.l.name;
+      body.appendChild(st);
+      body.appendChild(line);
+      row.appendChild(body);
       row.onclick=()=>gotoStation(m.l.id,m.i);
       el.appendChild(row);
     });
@@ -320,6 +362,52 @@ function resizeCanvas(){
   canvas.height=wrap.clientHeight;
 }
 
+function inclusivePath(line,aIdx,bIdx){
+  if(aIdx===bIdx) return [line.stations[aIdx]];
+  if(line.loop){
+    const n=line.stations.length;
+    const fwd=[];
+    for(let i=aIdx;;i=(i+1)%n){
+      fwd.push(line.stations[i]);
+      if(i===bIdx) break;
+    }
+    const rev=[];
+    for(let i=aIdx;;i=(i-1+n)%n){
+      rev.push(line.stations[i]);
+      if(i===bIdx) break;
+    }
+    return fwd.length<=rev.length?fwd:rev;
+  }
+  const s=Math.min(aIdx,bIdx), e=Math.max(aIdx,bIdx);
+  const path=line.stations.slice(s,e+1);
+  return aIdx<=bIdx?path:path.reverse();
+}
+
+function sharedStationRoute(line,a,b){
+  let best=null;
+  LINES.forEach(other=>{
+    if(other.id===line.id) return;
+    const ai=other.stations.findIndex(s=>s.n===a.n);
+    const bi=other.stations.findIndex(s=>s.n===b.n);
+    if(ai<0||bi<0) return;
+    const path=inclusivePath(other,ai,bi);
+    if(path.length<=2) return;
+    if(!best || path.length<best.length) best=path;
+  });
+  return best;
+}
+
+function segmentRoute(line,idx){
+  const a=line.stations[idx];
+  const b=line.stations[(idx+1)%line.stations.length];
+  return sharedStationRoute(line,a,b) || [a,b];
+}
+
+function segmentPairKey(a,b){
+  const ka=stationKey(a), kb=stationKey(b);
+  return ka<kb ? ka+'|'+kb : kb+'|'+ka;
+}
+
 function drawMap(){
   const W=canvas.width,H=canvas.height;
   ctx.clearRect(0,0,W,H);
@@ -343,11 +431,12 @@ function drawMap(){
   drawLines.forEach(l=>{
     const tot=l.stations.length-1+(l.loop?1:0);
     for(let i=0;i<tot;i++){
-      const a=l.stations[i], b=l.stations[(i+1)%l.stations.length];
-      const ka=stationKey(a), kb=stationKey(b);
-      const pk = ka<kb ? ka+'|'+kb : kb+'|'+ka;
-      if(!pairGroups[pk]) pairGroups[pk]=[];
-      if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
+      const route=segmentRoute(l,i);
+      for(let j=0;j<route.length-1;j++){
+        const pk=segmentPairKey(route[j],route[j+1]);
+        if(!pairGroups[pk]) pairGroups[pk]=[];
+        if(!pairGroups[pk].includes(l.id)) pairGroups[pk].push(l.id);
+      }
     }
   });
   Object.values(pairGroups).forEach(g=>g.sort());
@@ -453,22 +542,7 @@ function drawLineSegs(l,doneOnly){
   for(let i=0;i<tot;i++){
     const isDone=!!done[segKey(l.id,i)];
     if(doneOnly!==isDone) continue;
-    const a=l.stations[i];
-    const b=l.stations[(i+1)%l.stations.length];
-    const p1=geo2px(a.lat,a.lng);
-    const p2=geo2px(b.lat,b.lng);
-    // 평행 노선 분리: 같은 두 역을 잇는 노선이 여럿이면 직교 방향으로 나란히 띄움
-    let ox=0,oy=0;
-    const ka=stationKey(a), kb=stationKey(b);
-    const grp=pairGroups[ka<kb?ka+'|'+kb:kb+'|'+ka];
-    if(grp&&grp.length>1){
-      const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
-      const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
-      ox=-dy/len*off; oy=dx/len*off;
-    }
-    ctx.beginPath();
-    ctx.moveTo(p1.x+ox,p1.y+oy);
-    ctx.lineTo(p2.x+ox,p2.y+oy);
+    const route=segmentRoute(l,i);
     if(isDone){
       // 완료: 노선 색 진하게 + 글로우
       ctx.strokeStyle=l.color;
@@ -484,7 +558,23 @@ function drawLineSegs(l,doneOnly){
       ctx.shadowBlur=0;
     }
     ctx.lineCap='round';
-    ctx.stroke();
+    for(let j=0;j<route.length-1;j++){
+      const a=route[j], b=route[j+1];
+      const p1=geo2px(a.lat,a.lng);
+      const p2=geo2px(b.lat,b.lng);
+      // 평행 노선 분리: 같은 물리 경로를 공유하면 직교 방향으로 나란히 띄움
+      let ox=0,oy=0;
+      const grp=pairGroups[segmentPairKey(a,b)];
+      if(grp&&grp.length>1){
+        const GAP=5, off=(grp.indexOf(l.id)-(grp.length-1)/2)*GAP;
+        const dx=p2.x-p1.x, dy=p2.y-p1.y, len=Math.hypot(dx,dy)||1;
+        ox=-dy/len*off; oy=dx/len*off;
+      }
+      ctx.beginPath();
+      ctx.moveTo(p1.x+ox,p1.y+oy);
+      ctx.lineTo(p2.x+ox,p2.y+oy);
+      ctx.stroke();
+    }
     ctx.globalAlpha=1;
     ctx.shadowBlur=0;
   }
@@ -671,8 +761,8 @@ function tab(name){
 
 function fillLineSelect(){
   const s=document.getElementById('s-line');
-  s.innerHTML='<option value="">-- 노선 선택 --</option>';
-  LINES.forEach(l=>{ s.innerHTML+=`<option value="${l.id}">${l.name}</option>`; });
+  s.replaceChildren(makeOption('','-- 노선 선택 --'));
+  LINES.forEach(l=>s.appendChild(makeOption(l.id,l.name)));
 }
 
 function onLineSel(){
@@ -686,14 +776,14 @@ function fillManualSelects(lid){
   const fs=document.getElementById('s-from');
   const ts=document.getElementById('s-to');
   const dirRow=document.getElementById('s-dir-row');
-  fs.innerHTML='<option value="">-- 출발역 --</option>';
-  ts.innerHTML='<option value="">-- 도착역 --</option>';
+  fs.replaceChildren(makeOption('','-- 출발역 --'));
+  ts.replaceChildren(makeOption('','-- 도착역 --'));
   if(dirRow){ dirRow.style.display=(l&&l.loop)?'':'none'; if(l&&l.loop) document.getElementById('s-dir').value='auto'; }
   if(!l) return;
   document.getElementById('s-line').value=lid;
   l.stations.forEach((s,i)=>{
-    fs.innerHTML+=`<option value="${i}">${s.n}</option>`;
-    ts.innerHTML+=`<option value="${i}">${s.n}</option>`;
+    fs.appendChild(makeOption(String(i),s.n));
+    ts.appendChild(makeOption(String(i),s.n));
   });
 }
 
@@ -727,7 +817,7 @@ function doUndo(){
 function doReset(){
   if(!confirm('정말 전체 초기화할까요?')) return;
   done={};logs=[];
-  document.getElementById('log-list').innerHTML='';
+  document.getElementById('log-list').replaceChildren();
   toast('초기화 완료','warn');
   updateAll();
 }
@@ -780,7 +870,7 @@ function startGPS(){
   document.getElementById('gbtn').classList.add('on');
   document.getElementById('gdot').classList.add('on');
   document.getElementById('gstat').textContent='GPS 활성 — 역 감지 중...';
-  document.getElementById('gslog-list').innerHTML='';
+  document.getElementById('gslog-list').replaceChildren();
   watchId=navigator.geolocation.watchPosition(onGps,onGpsErr,{enableHighAccuracy:true,maximumAge:5000,timeout:10000});
 }
 function stopGPS(){
@@ -811,8 +901,10 @@ function onGps(pos){
         const cnt=completeRange(best.l.id,lastGpsSt.i,best.i);
         if(cnt>0){
           const msg=`${lastGpsSt.n}→${nm} (${cnt}구간)`;
-          document.getElementById('gslog-list').innerHTML=
-            `<div class="gslog-item">✓ ${msg}</div>`+document.getElementById('gslog-list').innerHTML;
+          const item=document.createElement('div');
+          item.className='gslog-item';
+          item.textContent='✓ '+msg;
+          document.getElementById('gslog-list').prepend(item);
           addLog(`[GPS] ${best.l.name} — ${msg}`);
           toast(`📍 ${nm} 도착 — ${cnt}구간 완료`);
           updateAll();
@@ -840,7 +932,7 @@ function showStationPopup(st){
   document.getElementById('pop-sub').textContent =
     lids.length>1 ? `${lids.length}개 노선 환승역` : ((LINES.find(l=>l.id===lids[0])||{}).name||'');
   const el=document.getElementById('pop-segs');
-  el.innerHTML='';
+  el.replaceChildren();
   // 이 역을 지나는 모든 노선을, 각 노선의 인접 구간 토글과 함께 표시
   st.refs.forEach(ref=>{
     const l=LINES.find(x=>x.id===ref.lid); if(!l) return;
@@ -851,15 +943,31 @@ function showStationPopup(st){
     if(l.loop&&si===0) segs.push({i:l.stations.length-1,from:l.stations[l.stations.length-1].n,to:l.stations[0].n});
     const head=document.createElement('div');
     head.className='pop-line';
-    const badge = l.code ? `<span class="lc-code" style="border-color:${l.color}">${l.code}</span>`
-                         : `<span class="pop-line-dot" style="background:${l.color}"></span>`;
-    head.innerHTML = badge + `<span>${l.name}</span>`;
+    if(l.code){
+      head.appendChild(lineBadge(l));
+    }else{
+      const dot=document.createElement('span');
+      dot.className='pop-line-dot';
+      dot.style.background=l.color;
+      head.appendChild(dot);
+    }
+    const label=document.createElement('span');
+    label.textContent=l.name;
+    head.appendChild(label);
     el.appendChild(head);
     segs.forEach(sg=>{
       const ok=!!done[segKey(l.id,sg.i)];
       const row=document.createElement('div');
       row.className='pop-seg';
-      row.innerHTML=`<span class="${ok?'seg-ok':'seg-no'}">${ok?'✓':'○'} ${sg.from}→${sg.to}</span><button class="seg-btn${ok?' ok':''}" onclick="toggleSeg('${l.id}',${sg.i},this,event)">${ok?'취소':'완료'}</button>`;
+      const span=document.createElement('span');
+      span.className=ok?'seg-ok':'seg-no';
+      span.textContent=`${ok?'✓':'○'} ${sg.from}→${sg.to}`;
+      const btn=document.createElement('button');
+      btn.className='seg-btn'+(ok?' ok':'');
+      btn.textContent=ok?'취소':'완료';
+      btn.addEventListener('click',e=>toggleSeg(l.id,sg.i,btn,e));
+      row.appendChild(span);
+      row.appendChild(btn);
       el.appendChild(row);
     });
   });
@@ -898,7 +1006,7 @@ function addLog(txt){
 }
 function renderLog(){
   const el=document.getElementById('log-list');
-  el.innerHTML='';
+  el.replaceChildren();
   if(!logs.length){
     const d=document.createElement('div');
     d.className='log-empty';
