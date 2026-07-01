@@ -1,6 +1,6 @@
 // Service Worker — 오프라인 캐시
 // 파일 수정 후 갱신이 안 되면 아래 CACHE 버전 숫자를 올리세요.
-const CACHE = 'jrt-v93';
+const CACHE = 'jrt-v99';
 const ASSETS = [
   './',
   './index.html',

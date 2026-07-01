@@ -16,19 +16,25 @@ const LINE_META = {
   takasaki:{code:'JU',color:'#F68B1E'}, utsunomiya:{code:'JU',color:'#F68B1E'},
   joban:{color:'#0079C2'}, // 조반선(중거리)은 단일 노선코드 없음 — JJ는 별도 조반쾌속선(우에노~토리데)
   joban_rapid:{code:'JJ',color:'#00B261'}, // 조반쾌속선: 에메랄드그린(E231 띠색)
-  joban_local:{code:'JL',color:'#9AA0A6'}, // 조반완행선: 역번호 배지 회색(쾌속과 구분)
+  joban_local:{code:'JL',color:'#808080'}, // 조반완행선: 회색(위키 路線色 #808080)
   chuo_higashi:{code:'CO',color:'#2E6FB0'}, chuo_tatsuno:{code:'CO',color:'#2E6FB0'}, // 中央東線(CO): 파랑. 타카오까지만 JC주황, 이후 CO파랑(현실과 약간 다름)
   sobu_main:{color:'#FFD400'}, // 総武本線 銚子방면(普通): 코드없음, 공식 노란색(完行과 같은 총무 옐로)
   ueno_tokyo:{color:'#A0228E'}, // 우에노도쿄라인 連結선(도쿄~우에노): 코드없음, 보라/마젠타
-  ito:{code:'JT',color:'#1A9E4B',codeColor:'#F68B1E'}, // 이토선: 노선색 녹색, 역번호는 JT(도카이도 연속)라 배지는 주황
-  ryomo:{color:'#6FA82E'}, // 료모선: 코드없음, 녹색(조정가능)
-  joetsu:{color:'#0072BC'}, // 上越線: 코드없음, 파란색(공식 라인컬러 계열)
+  ito:{code:'JT',color:'#22AA33',codeColor:'#F68B1E'}, // 이토선: 녹색(위키 路線色 #22aa33), 역번호는 JT(도카이도 연속)라 배지는 주황
+  ryomo:{color:'#FFD400'}, // 료모선: 코드없음, 노란색(위키 路線色 #ffd400·en 'Yellow' 확정)
+  joetsu:{color:'#00B3E6'}, // 上越線: 코드없음, 하늘색(위키 路線色 #00b3e6·en deepskyblue). JK와 유사하나 지역 안 겹침.
   saikyo:{code:'JA',color:'#00AC9B'}, kawagoe:{color:'#8C8C8C'}, // 카와고에선: 공식 회색·코드 없음(사이쿄 직통이나 자체색은 회색)
   yokohama:{code:'JH',color:'#80C342'},
   nambu:{code:'JN',color:'#F0C800'}, nambu_hamakawasaki:{code:'JN',color:'#F0C800'},
   keiyo:{code:'JE',color:'#C9252C'}, keiyo_takaya:{code:'JE',color:'#C9252C'}, keiyo_futamata:{code:'JE',color:'#C9252C'},
   musashino:{code:'JM',color:'#ED6D00'},
-  hachiko:{color:'#C9B58B'} // 하치코선: 코드 없음, 공식 베이지/탄(올리브 아님)
+  hachiko:{color:'#C9B58B'}, // 하치코선: 코드 없음, 공식 베이지/탄(올리브 아님)
+  // 요코하마 지사
+  tsurumi:{code:'JI',color:'#FFD400'}, tsurumi_umishibaura:{code:'JI',color:'#FFD400'}, tsurumi_okawa:{code:'JI',color:'#FFD400'}, // 츠루미선(JI): 노란색
+  sagami:{color:'#009793'}, // 사가미선: 코드 없음(역번호 미부여), 청록색(위키 路線色 #009793)
+  // 오미야 지사(도치기) — 둘 다 역번호 코드 없음
+  nikko:{color:'#880022'}, // 닛코선: 위키 路線色 브라운/팥색(본문 옛표기 녹색·현행 브라운)
+  karasuyama:{color:'#339966'} // 카라스야마선: 위키 路線色 녹색
 };
 LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; l.codeColor=m.codeColor; } });
 
@@ -602,6 +608,19 @@ function drawMap(){
     }
   });
 
+  // via(통과) 지점: 작은 빈 회색 링(정차 안 함 표시). 그 좌표에 실제 역 점이 이미 있으면(예 본선 무사시시라이시) 생략.
+  drawLines.forEach(l=>l.stations.forEach(s=>{
+    if(!s.via) return;
+    s.via.forEach(v=>{
+      const key=Math.round(v.lat*1000)+','+Math.round(v.lng*1000);
+      if(stationPts[key]) return;
+      const {x,y}=geo2px(v.lat,v.lng);
+      ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);
+      ctx.fillStyle='#0b0f16';ctx.fill();
+      ctx.lineWidth=1.5;ctx.strokeStyle='#9aa0a6';ctx.stroke();
+    });
+  }));
+
   // ── 라벨 (충돌 회피) — 줌 1.4 이상, 또는 선택/환승 모드일 땐 항상 ──
   if(vscale>=1.4 || vis){
     const fontSize=Math.max(9,Math.min(14,8+vscale*0.7));
@@ -682,6 +701,8 @@ function drawLineSegs(l,doneOnly){
     const segColor=(l.tailFrom!=null && i>=l.tailFrom && l.tailColor)?l.tailColor:l.color; // 구간별 색(예 相鉄 구간 네이비)
     ctx.beginPath();
     ctx.moveTo(p1.x+ox,p1.y+oy);
+    // via: 통과역 등 중간 경유점이 있으면 그 점들로 꺾어 그림(예 오카와지선=안젠→무사시시라이시 통과→오카와)
+    if(b.via) b.via.forEach(v=>{ const pv=geo2px(v.lat,v.lng); ctx.lineTo(pv.x+ox,pv.y+oy); });
     ctx.lineTo(p2.x+ox,p2.y+oy);
     if(isDone){
       // 완료: 노선 색 진하게 + 글로우
@@ -828,8 +849,8 @@ function handleMapClick(clientX,clientY){
 }
 
 function fitLine(l){
-  const lats=l.stations.map(s=>s.lat);
-  const lngs=l.stations.map(s=>s.lng);
+  const lats=l.stations.flatMap(s=>[s.lat,...(s.via||[]).map(v=>v.lat)]);
+  const lngs=l.stations.flatMap(s=>[s.lng,...(s.via||[]).map(v=>v.lng)]);
   const mxLat=Math.max(...lats),mnLat=Math.min(...lats);
   const mxLng=Math.max(...lngs),mnLng=Math.min(...lngs);
   const wrap=document.getElementById('map-wrap');
@@ -872,6 +893,13 @@ function showChokketsuCard(cid){
   chokketsuCardId=cid; // 실시간 % 갱신 추적
   const card=compositeCard(c); card.onclick=null; // 표시 전용(클릭 비활성)
   el.innerHTML=''; el.appendChild(card); el.style.display='';
+}
+// 노선별 안내 노트(예 오카와지선 무사시시라이시 통과)를 맵 버튼 아래에 표시/숨김
+function updateLineNote(){
+  const el=document.getElementById('line-note'); if(!el) return;
+  const l=(selLineId&&!selCompositeId)?LINES.find(x=>x.id===selLineId):null;
+  if(l&&l.note){ el.textContent='ⓘ '+l.note; el.style.display=''; }
+  else { el.style.display='none'; el.textContent=''; }
 }
 // showWith 중 구간지정({id,from,to})이 있으면 그 노선을 해당 구간만 표시하도록 compRange 생성(예 소테츠→사이쿄 신주쿠~오사키만)
 function showWithClip(lid){
@@ -923,6 +951,7 @@ function selectLine(lid){
   viewMode='sel'; // 노선 선택 시 기본 '선택 노선만' 보기
   updateMode3Label(lid);
   hideChokketsuCard();
+  updateLineNote();
   document.querySelectorAll('.mm-btn').forEach(b=>b.classList.toggle('on', b.dataset.m==='sel'));
   const l=LINES.find(x=>x.id===lid);
   renderLinesList();
@@ -939,6 +968,7 @@ function selectComposite(cid){
   compRange={}; specs.forEach(s=>{ compRange[s.id]=[s.a,s.b]; });
   viewMode='all';
   hideChokketsuCard();
+  updateLineNote();
   document.querySelectorAll('.mm-btn').forEach(b=>b.classList.remove('on'));
   renderLinesList();
   const sts=[];
