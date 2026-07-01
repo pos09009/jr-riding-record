@@ -34,7 +34,11 @@ const LINE_META = {
   sagami:{color:'#009793'}, // 사가미선: 코드 없음(역번호 미부여), 청록색(위키 路線色 #009793)
   // 오미야 지사(도치기) — 둘 다 역번호 코드 없음
   nikko:{color:'#880022'}, // 닛코선: 위키 路線色 브라운/팥색(본문 옛표기 녹색·현행 브라운)
-  karasuyama:{color:'#339966'} // 카라스야마선: 위키 路線色 녹색
+  karasuyama:{color:'#339966'}, // 카라스야마선: 위키 路線色 녹색
+  // 치바 지사 — 나리타선(본선+아비코지선+공항지선): 초록 #00b261(위키 路線色), 배지=JO 네이비(소부쾌속 직통 계통기호)
+  narita:{code:'JO',color:'#00B261',codeColor:'#004EA2'},
+  narita_abiko:{code:'JO',color:'#00B261',codeColor:'#004EA2'},
+  narita_airport:{code:'JO',color:'#00B261',codeColor:'#004EA2'}
 };
 LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; l.codeColor=m.codeColor; } });
 
