@@ -3,6 +3,7 @@
 // 각 파일이 window.JR_DATA.<지역> 에 배열을 채워둠
 // ═══════════════════════════════════════════
 const LINES = Object.values(window.JR_DATA || {}).flat();
+const LINE_BY_ID = {}; LINES.forEach(l=>{ LINE_BY_ID[l.id]=l; });
 
 // 공식 노선기호(영문 코드) + 공식 라인컬러. 로드 시 id 기준으로 적용(단일 출처).
 const LINE_META = {
@@ -38,7 +39,14 @@ const LINE_META = {
   // 치바 지사 — 나리타선(본선+아비코지선+공항지선): 초록 #00b261(위키 路線色), 배지=JO 네이비(소부쾌속 직통 계통기호)
   narita:{code:'JO',color:'#00B261',codeColor:'#004EA2'},
   narita_abiko:{code:'JO',color:'#00B261',codeColor:'#004EA2'},
-  narita_airport:{code:'JO',color:'#00B261',codeColor:'#004EA2'}
+  narita_airport:{code:'JO',color:'#00B261',codeColor:'#004EA2'},
+  // 치바 지사 남은 5개 — 전부 역번호 코드 없음(위키 駅ナンバリング 필드 부재 확인)
+  // ⚠색: 위키 인포박스 路線色 대신 사용자 제공 공식 노선도 사진 기준으로 조정(2026-07-01) — 위키값과 다름, 사진이 실제 안내색에 더 가깝다고 판단.
+  kashima:{color:'#C56E2E'}, sotobo:{color:'#E2231A'}, togane:{color:'#C81E1E'},
+  uchibo:{color:'#0068B7'}, kururi:{color:'#00AC9B'}, // 쿠루리: 사이쿄선과 동일 색(사용자 지정, 2026-07-01)
+  // 미토·오미야 지사 추가분 — 전부 역번호 코드 없음. 스이군=위키 路線色, 미토·아가츠마=사용자 공식 노선도 사진 기준(위키값과 달라 조정, 2026-07-02)
+  mito:{color:'#1D6FC5'}, suigun:{color:'#368C44'}, suigun_ota:{color:'#368C44'},
+  agatsuma:{color:'#148579'}
 };
 LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; l.codeColor=m.codeColor; } });
 
@@ -64,6 +72,9 @@ function unifyStations(){
     });
   });
 }
+// 기록 키용 원시 좌표키(_rk): unifyStations가 좌표를 평균으로 옮기기 "전"의 데이터 파일 원본 좌표 기준.
+// 다른 노선이 같은 역에 합류해 unify 평균이 이동해도 이 키는 불변 → 기록 키가 안정적.
+LINES.forEach(l=>l.stations.forEach(s=>{ s._rk = Math.round(s.lat*1000)+','+Math.round(s.lng*1000); }));
 unifyStations();
 
 // 역 인덱스: 좌표키 → {name,lat,lng, refs:[{lid,idx}]}. 환승역 판별 + 클릭 팝업용. unify 후 1회.
@@ -86,13 +97,9 @@ function isInterchange(entry){ return !!entry && new Set(entry.refs.map(r=>r.lid
 //  - 노선 구간 완료 = 직접 탑승(raw done) OR 그 구간이 덮는 base atomic이 전부 채워짐(파생).
 //  새 그룹을 늘리려면 아래 LINE_GROUPS에 {base, members} 한 줄만 추가하면 됨.
 // ═══════════════════════════════════════════
-const LINE_GROUPS = [
-  { base:'joban_local', members:['joban_rapid','joban'] }, // 조반: base=조반완행(각역정차), 서비스=쾌속·중거리(둘 다 우에노~토리데 동일정차, 완행역 통과)
-  // 츄오·소부: base=츄오·소부완행선(각역정차). 완행은 츄오(미타카~오차노미즈)·소부(오차노미즈~치바) 양쪽 공통 base.
-  //  - 츄오쾌속(chuo): 오차노미즈~나카노서 완행역 건너뜀
-  //  - 소부쾌속(sobu_rapid): 킨시초~치바서 완행역 건너뜀(도쿄·신니혼바시·바쿠로초는 쾌속고유)
-  { base:'sobu', members:['chuo','sobu_rapid'] }
-];
+// 계통 데이터는 data/services.js(window.JR_SERVICES)에서 로드 — 정의·주석도 그쪽 참조.
+const SVC = window.JR_SERVICES || {};
+const LINE_GROUPS = SVC.LINE_GROUPS || [];
 const groupOfLine = {};   // lid → 소속 그룹
 const baseKeyIdx = {};    // baseLid → { 좌표키: base역 인덱스 }
 (function buildGroups(){
@@ -133,10 +140,22 @@ function computeAtomics(){
 
 // 한 노선 구간 i의 완료 여부(파생). 직접 탑승 OR 덮는 base atomic 전부 채워짐.
 // 물리적으로 같은 구간을 공유하는 노선 세그먼트(하나 타면 다 인정). 예: 도쿄~우에노 列車線(우츠노미야↔우에노도쿄라인).
-const SHARED_SEGS = [
-  ['utsunomiya_0','ueno_tokyo_0'],                                         // 도쿄~우에노(우츠노미야↔우에노도쿄라인)
-  ['sotetsu_0','saikyo_2'], ['sotetsu_1','saikyo_1'], ['sotetsu_2','saikyo_0'], // 신주쿠~오사키(소테츠↔사이쿄, 역순 매칭)
-];
+// SVC.SHARED_SEGMENTS(역명 기반 선언)를 세그먼트 키 그룹으로 해석.
+// 각 노선에서 두 역이 "인접"인 구간을 찾음(방향 무관). 못 찾으면 validateData가 경고.
+function findAdjSeg(lid, na, nb){
+  const l=LINES.find(x=>x.id===lid); if(!l) return null;
+  const tot=l.stations.length-1+(l.loop?1:0);
+  for(let i=0;i<tot;i++){
+    const a=l.stations[i].n, b=l.stations[(i+1)%l.stations.length].n;
+    if((a===na&&b===nb)||(a===nb&&b===na)) return segKey(lid,i);
+  }
+  return null;
+}
+const SHARED_SEGS = [];
+(SVC.SHARED_SEGMENTS||[]).forEach(sh=>{
+  const g=sh.lines.map(lid=>findAdjSeg(lid, sh.stations[0], sh.stations[1])).filter(Boolean);
+  if(g.length>=2) SHARED_SEGS.push(g);
+});
 const SHARED_OF = {};
 SHARED_SEGS.forEach(g=>g.forEach(k=>{ SHARED_OF[k]=g; }));
 
@@ -163,55 +182,107 @@ function isSegComplete(lid,i){
 //  - 클릭 시 멤버 노선들을 지도에 통합 fit + 그 노선들만 표시(보기 전용).
 //  - 완료율 총합엔 미반영(LINES만 카운트) → 중복 카운트 없음.
 // ═══════════════════════════════════════════
-const VIEW_COMPOSITES = [
-  // 츄오 본선: 별도 본선 안 긋고, 쾌속(도쿄~타카오)+산악구간을 묶어서 전구간 보기.
-  // 미타카~오차노미즈는 완행선(전역정차)도 포함 — 쾌속이 생략한 각역까지 보이게.
-  // 멤버는 문자열(전구간) 또는 {id,from,to}(역명 구간) 둘 다 가능.
-  { id:'__chuo_honsen', name:'츄오 본선 中央本線', color:'#2E6FB0',
-    badges:[{code:'JC',color:'#F15A22'},{code:'CO',color:'#2E6FB0'}], // 통합 대신 노선기호 둘 다 표기
-    members:['chuo','chuo_higashi','chuo_tatsuno',{id:'sobu',from:'미타카',to:'오차노미즈'}] },
-  // 조반선(통합): 常磐線 공식구간 닛포리~이와누마(우에노~닛포리는 東北本線이라 제외). 배지 없음.
-  // 쾌속·중거리 모두 닛포리부터 클립(둘 다 우에노 시발이지만 통합은 常磐線 공식구간만).
-  { id:'__joban_honsen', name:'조반선 常磐線', color:'#0079C2',
-    members:[{id:'joban_rapid',from:'닛포리',to:'토리데'},'joban_local',{id:'joban',from:'닛포리',to:'이와누마'}] },
-  // 소부 본선: 総武本線 도쿄~쵸시. 공식색 노란색, 영어 노선기호 없음.
-  { id:'__sobu_honsen', name:'소부 본선 総武本線', color:'#FFD400',
-    members:['sobu_rapid',{id:'sobu',from:'오차노미즈',to:'치바'},'sobu_main'] },
-  // 우에노도쿄라인: 連結선(도쿄~우에노)+직결 계통 통합. 클릭 시 연관 노선 전부 하이라이트.
-  // 사진 범례: 주황계통=東海道·高崎·宇都宮, 녹색계통=常磐(中距離, 보통 직통은 타카하기까지·이북은 특급뿐이라 제외).
-  // 우에노도쿄라인 통합: 본선처럼 JU·JJ·JT 표기. 직통범위 — 도카이도→아타미~이토(JT), 우츠노미야→우츠노미야까지(JU),
-  // 타카사키→上越(타카사키~신마에바시)→両毛 마에바시(JU), 조반→타카하기(JJ, 이북 특급 제외).
-  { id:'__ueno_tokyo', name:'우에노도쿄라인 (직결) 上野東京ライン', color:'#A0228E',
-    badges:[{code:'JU',color:'#F68B1E'},{code:'JJ',color:'#00B261'},{code:'JT',color:'#F68B1E'}],
-    members:['ueno_tokyo','tokaido','ito',{id:'utsunomiya',from:'도쿄',to:'우츠노미야'},'takasaki',
-             {id:'joetsu',from:'타카사키',to:'신마에바시'},
-             {id:'ryomo',from:'신마에바시',to:'마에바시'},{id:'joban',from:'우에노',to:'타카하기'}] },
-  // 쇼난신주쿠라인 통합: 트렁크는 신주쿠 경유(오미야~오후나~즈시, JS빨강). 북쪽=우에노도쿄와 동일(우츠노미야/마에바시).
-  // 남쪽 분기: 오후나~즈시=JS본선연장(빨강, shonan에 포함), 오후나~오다와라=도카이도(주황, tokaido 클립).
-  { id:'__shonan', name:'쇼난신주쿠라인 (직결) 湘南新宿ライン', color:'#E4002B',
-    badges:[{code:'JS',color:'#E4002B'}],
-    members:['shonan',{id:'utsunomiya',from:'오미야',to:'우츠노미야'},'takasaki',
-             {id:'joetsu',from:'타카사키',to:'신마에바시'},{id:'ryomo',from:'신마에바시',to:'마에바시'},
-             {id:'tokaido',from:'오후나',to:'오다와라'}] }
-];
-// 노선 목록 카드에서 숨길 노선(지도엔 그대로 그려지고 통합 멤버·환승팝업엔 표시). 현재 없음.
-// (ueno_tokyo 1구간 보라선은 목록에 표시, 통합은 '우에노도쿄라인 (통합)'으로 별도)
-const HIDDEN_FROM_LIST = new Set();
-// 노선 → 그 노선의 (직결) 통합 id. 이 노선을 선택하면 맵 3번째 버튼이 '환승 포함' 대신 '직결'이 되고, 누르면 그 통합을 봄.
-const LINE_CHOKKETSU = { shonan:'__shonan', ueno_tokyo:'__ueno_tokyo' };
+// 통합 보기·숨김·직결 매핑도 data/services.js에서 로드.
+const VIEW_COMPOSITES = SVC.VIEW_COMPOSITES || [];
+const HIDDEN_FROM_LIST = new Set(SVC.HIDDEN_FROM_LIST || []);
+const LINE_CHOKKETSU = SVC.LINE_CHOKKETSU || {};
 // 위 직결 통합들은 노선 목록에 따로 안 보이고, 직결 버튼 누를 때 맵 좌상단 카드로만 등장.
 const CHOKKETSU_COMPS = new Set(Object.values(LINE_CHOKKETSU));
 // 통합 멤버를 {id,line,a,b}(역 인덱스 범위, 포함)로 해석. 문자열은 전구간.
 function compResolve(m){
   const id=typeof m==='string'?m:m.id;
-  const line=LINES.find(x=>x.id===id); if(!line) return null;
+  const line=LINES.find(x=>x.id===id);
+  if(!line){ console.warn(`[통합보기] 없는 노선 id '${id}'`); return null; }
   let a=0,b=line.stations.length-1;
   if(typeof m==='object'){
     const fi=line.stations.findIndex(s=>s.n===m.from), ti=line.stations.findIndex(s=>s.n===m.to);
     if(fi>=0&&ti>=0){ a=Math.min(fi,ti); b=Math.max(fi,ti); }
+    else console.warn(`[통합보기] ${id}: 역명 못 찾음 from='${m.from}'(${fi}) to='${m.to}'(${ti}) → 전구간으로 대체됨`);
   }
   return {id,line,a,b};
 }
+
+// ═══════════════════════════════════════════
+// 데이터 검증 — 로드 시 1회. 노선/계통 데이터의 참조 오류(오타·없는 id·비인접 공유역·좌표 이상치)를
+// 콘솔 경고로 노출. 결과는 window.__dataIssues 배열(비면 통과). 업로드 전 tools/validate.js로도 실행 가능.
+// ═══════════════════════════════════════════
+function validateData(){
+  const issues=[];
+  const byId={}; LINES.forEach(l=>{ if(byId[l.id]) issues.push(`노선 id 중복: ${l.id}`); byId[l.id]=l; });
+  if(!window.JR_SERVICES) issues.push('data/services.js 미로드(JR_SERVICES 없음) — 크레딧/통합/직결/공유 전부 비활성 상태');
+  // LINE_META ↔ LINES 양방향
+  Object.keys(LINE_META).forEach(id=>{ if(!byId[id]) issues.push(`LINE_META에 없는 노선 id: ${id}`); });
+  LINES.forEach(l=>{ if(!l.color) issues.push(`노선 색 없음: ${l.id}`); });
+  // 노선별 필드·좌표 무결성
+  LINES.forEach(l=>{
+    const n=l.stations.length, segs=n-1+(l.loop?1:0);
+    const names={};
+    l.stations.forEach((s,i)=>{
+      if(!s.n||typeof s.lat!=='number'||typeof s.lng!=='number') issues.push(`${l.id}[${i}]: 역 필드 불완전`);
+      if(names[s.n]!=null && !l.loop) issues.push(`${l.id}: 역명 중복 '${s.n}'(idx ${names[s.n]},${i})`);
+      names[s.n]=i;
+      (s.via||[]).forEach(v=>{ if(!v.n||typeof v.lat!=='number') issues.push(`${l.id}/${s.n}: via 필드 불완전`); });
+    });
+    for(let i=1;i<n;i++){
+      const a=l.stations[i-1], b=l.stations[i];
+      const d=Math.hypot((a.lat-b.lat)*111000,(a.lng-b.lng)*Math.cos(a.lat*Math.PI/180)*111000);
+      if(d>30000) issues.push(`${l.id}: ${a.n}→${b.n} 간격 ${(d/1000).toFixed(1)}km(>30km, 좌표 확인)`);
+      if(d<100) issues.push(`${l.id}: ${a.n}→${b.n} 간격 ${d.toFixed(0)}m(<100m, 좌표 확인)`);
+    }
+    (l.drawSkip||[]).forEach(i=>{ if(i<0||i>=segs) issues.push(`${l.id}: drawSkip 인덱스 범위 밖 ${i}`); });
+    if(l.tailFrom!=null&&(l.tailFrom<0||l.tailFrom>=n)) issues.push(`${l.id}: tailFrom 범위 밖 ${l.tailFrom}`);
+    if(l.nonJrFrom!=null&&(l.nonJrFrom<0||l.nonJrFrom>n)) issues.push(`${l.id}: nonJrFrom 범위 밖 ${l.nonJrFrom}`);
+    (l.showWith||[]).forEach(w=>{
+      const wid=typeof w==='string'?w:w.id;
+      const wl=byId[wid];
+      if(!wl){ issues.push(`${l.id}.showWith: 없는 노선 '${wid}'`); return; }
+      if(typeof w==='object'&&w.from){
+        if(!wl.stations.some(s=>s.n===w.from)) issues.push(`${l.id}.showWith→${wid}: 역 '${w.from}' 없음`);
+        if(!wl.stations.some(s=>s.n===w.to)) issues.push(`${l.id}.showWith→${wid}: 역 '${w.to}' 없음`);
+      }
+    });
+  });
+  // 크레딧 그룹
+  LINE_GROUPS.forEach(g=>{
+    if(!byId[g.base]) issues.push(`LINE_GROUPS: base 노선 없음 '${g.base}'`);
+    g.members.forEach(m=>{ if(!byId[m]) issues.push(`LINE_GROUPS(${g.base}): 멤버 노선 없음 '${m}'`); });
+  });
+  // 통합 보기
+  const compIds={};
+  VIEW_COMPOSITES.forEach(c=>{
+    if(compIds[c.id]) issues.push(`통합 id 중복: ${c.id}`); compIds[c.id]=1;
+    c.members.forEach(m=>{
+      const id=typeof m==='string'?m:m.id;
+      const l=byId[id];
+      if(!l){ issues.push(`${c.id}: 없는 노선 '${id}'`); return; }
+      if(typeof m==='object'){
+        if(!l.stations.some(s=>s.n===m.from)) issues.push(`${c.id}→${id}: 역 '${m.from}' 없음`);
+        if(!l.stations.some(s=>s.n===m.to)) issues.push(`${c.id}→${id}: 역 '${m.to}' 없음`);
+      }
+    });
+  });
+  // 직결 매핑·숨김
+  Object.entries(LINE_CHOKKETSU).forEach(([lid,cid])=>{
+    if(!byId[lid]) issues.push(`LINE_CHOKKETSU: 없는 노선 '${lid}'`);
+    if(!compIds[cid]) issues.push(`LINE_CHOKKETSU(${lid}): 없는 통합 '${cid}'`);
+  });
+  HIDDEN_FROM_LIST.forEach(id=>{ if(!byId[id]) issues.push(`HIDDEN_FROM_LIST: 없는 노선 '${id}'`); });
+  // 물리 공유 구간(역명이 각 노선에서 인접쌍으로 실재하는지)
+  (SVC.SHARED_SEGMENTS||[]).forEach(sh=>{
+    sh.lines.forEach(lid=>{
+      if(!byId[lid]){ issues.push(`SHARED_SEGMENTS(${sh.stations.join('~')}): 없는 노선 '${lid}'`); return; }
+      if(!findAdjSeg(lid,sh.stations[0],sh.stations[1]))
+        issues.push(`SHARED_SEGMENTS: ${lid}에서 '${sh.stations[0]}'~'${sh.stations[1]}' 인접쌍 못 찾음`);
+    });
+  });
+  window.__dataIssues=issues;
+  if(issues.length){
+    console.warn(`[데이터 검증] ${issues.length}건 발견:`);
+    issues.forEach(s=>console.warn('  - '+s));
+  }
+  return issues;
+}
+validateData();
 
 // ═══════════════════════════════════════════
 // STATE
@@ -233,30 +304,74 @@ let gpsSessionList = [];
 function load(){
   try{
     const s = localStorage.getItem('jrt3');
-    if(s){ const d=JSON.parse(s); done=d.done||{}; logs=d.logs||[]; }
+    if(s){
+      const d=JSON.parse(s);
+      logs=d.logs||[];
+      if(d.fmt===2){ done=d.done||{}; }
+      else {
+        const r=migrateDone(d.done||{});
+        done=r.done;
+        if(r.migrated) console.log(`[기록] 세그먼트 키 v2 마이그레이션 완료: ${r.migrated}건`);
+        save(); // 변환 결과 즉시 저장(fmt:2 스탬프)
+      }
+    }
   }catch(e){}
 }
 function save(){
-  localStorage.setItem('jrt3', JSON.stringify({done,logs}));
+  localStorage.setItem('jrt3', JSON.stringify({done,logs,fmt:2}));
 }
 
-function segKey(lid,i){ return lid+'_'+i; }
+// 기록 키 v2: "노선id:원시좌표키A~원시좌표키B"(정준 정렬). 역 삽입/삭제·이름변경에도 기존 기록이 안 밀림.
+// (v1은 "노선id_인덱스"라 중간역 삽입 시 뒤 기록이 전부 어긋났음 — 조반 v67/v76, 우츠노미야 v81 사고의 근본 해결.)
+// 같은 두 역을 잇는 평행 노선은 lid가 달라 독립 유지. 물리 공유는 SHARED_SEGS가 명시 처리.
+function segKey(lid,i){
+  const l=LINE_BY_ID[lid];
+  if(!l) return lid+'_'+i;
+  const a=l.stations[i], b=l.stations[(i+1)%l.stations.length];
+  if(!a||!b||!a._rk||!b._rk) return lid+'_'+i;
+  return a._rk<b._rk ? lid+':'+a._rk+'~'+b._rk : lid+':'+b._rk+'~'+a._rk;
+}
+// v1 기록(lid_인덱스)을 v2로 변환. "역 목록 구조가 v1 기록 당시와 동일"한 릴리즈에서 1회 실행되는 전제
+// (이 릴리즈는 데이터 구조 변경 없이 키 형식만 바꿈). 매칭 안 되는 키는 버리지 않고 보존+경고.
+function migrateDone(old){
+  const out={}; let mig=0; const orphans=[];
+  Object.keys(old).forEach(k=>{
+    if(!old[k]) return; // false(취소된 기록)는 버림
+    if(k.includes(':')){ out[k]=true; return; } // 이미 v2
+    const m=k.match(/^(.+)_(\d+)$/);
+    const l=m&&LINE_BY_ID[m[1]];
+    if(l){
+      const i=+m[2], tot=l.stations.length-1+(l.loop?1:0);
+      if(i<tot){ out[segKey(m[1],i)]=true; mig++; return; }
+    }
+    out[k]=true; orphans.push(k); // 알 수 없는 키: 데이터 유실 방지 위해 그대로 보존
+  });
+  if(orphans.length) console.warn('[기록 마이그레이션] 매칭 실패 키 보존:', orphans);
+  return {done:out, migrated:mig};
+}
 
+// nonJrFrom: 이 인덱스부터 끝까지는 실제로 JR 소유 선로가 아님(직결 상대회사 자체 선로, 예 소테츠 하자와~에비나).
+// 지도엔 그려지고 탑승 토글도 되지만(참고용), 완주율/총 구간수 집계에서는 제외.
+function isJrSeg(l,i){ return l.nonJrFrom==null || i<l.nonJrFrom; }
 function totalSegs(){
-  return LINES.reduce((s,l)=>s+l.stations.length-1+(l.loop?1:0),0);
+  return LINES.reduce((s,l)=>{
+    const tot=l.stations.length-1+(l.loop?1:0);
+    let n=0; for(let i=0;i<tot;i++) if(isJrSeg(l,i)) n++;
+    return s+n;
+  },0);
 }
 function doneSegs(){
   let n=0;
   LINES.forEach(l=>{
     const tot=l.stations.length-1+(l.loop?1:0);
-    for(let i=0;i<tot;i++) if(isSegComplete(l.id,i)) n++;
+    for(let i=0;i<tot;i++) if(isJrSeg(l,i) && isSegComplete(l.id,i)) n++;
   });
   return n;
 }
 function lineDone(l){
-  const tot=l.stations.length-1+(l.loop?1:0);
-  let d=0;
-  for(let i=0;i<tot;i++) if(isSegComplete(l.id,i)) d++;
+  const totAll=l.stations.length-1+(l.loop?1:0);
+  let d=0,tot=0;
+  for(let i=0;i<totAll;i++){ if(!isJrSeg(l,i)) continue; tot++; if(isSegComplete(l.id,i)) d++; }
   return {d,tot};
 }
 function doneLines(){
@@ -352,7 +467,7 @@ function lineCard(l){
 function compositeDone(c){
   let d=0,tot=0;
   c.members.map(compResolve).filter(Boolean).forEach(s=>{
-    for(let i=s.a;i<s.b;i++){ tot++; if(isSegComplete(s.id,i)) d++; }
+    for(let i=s.a;i<s.b;i++){ if(!isJrSeg(s.line,i)) continue; tot++; if(isSegComplete(s.id,i)) d++; }
   });
   return {d,tot};
 }
@@ -911,9 +1026,11 @@ function showWithClip(lid){
   const cr={};
   l.showWith.forEach(w=>{
     if(typeof w==='object' && w.from){
-      const wl=LINES.find(x=>x.id===w.id); if(!wl) return;
+      const wl=LINES.find(x=>x.id===w.id);
+      if(!wl){ console.warn(`[showWith] ${lid}: 없는 노선 id '${w.id}'`); return; }
       const a=wl.stations.findIndex(s=>s.n===w.from), b=wl.stations.findIndex(s=>s.n===w.to);
       if(a>=0&&b>=0) cr[w.id]=[Math.min(a,b),Math.max(a,b)];
+      else console.warn(`[showWith] ${lid}→${w.id}: 역명 못 찾음 from='${w.from}' to='${w.to}' → 클립 미적용(전구간 표시됨)`);
     }
   });
   return Object.keys(cr).length?cr:null;
@@ -1072,7 +1189,7 @@ function doReset(){
 // BACKUP (내보내기 / 가져오기)
 // ═══════════════════════════════════════════
 function doExport(){
-  const payload={ version:1, exportedAt:new Date().toISOString(), done, logs };
+  const payload={ version:1, fmt:2, exportedAt:new Date().toISOString(), done, logs };
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -1092,7 +1209,8 @@ function doImport(e){
       const d=JSON.parse(reader.result);
       if(typeof d.done!=='object'||!Array.isArray(d.logs)) throw new Error('형식 오류');
       if(!confirm('현재 기록을 덮어씁니다. 계속할까요?\n(필요하면 먼저 내보내기로 백업하세요)')) return;
-      done=d.done||{}; logs=d.logs||[];
+      done=(d.fmt===2)?(d.done||{}):migrateDone(d.done||{}).done; // 구버전 백업(v1 키)도 자동 변환
+      logs=d.logs||[];
       renderLog();
       updateAll();
       toast('✓ 기록을 가져왔습니다');

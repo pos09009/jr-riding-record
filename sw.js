@@ -1,12 +1,13 @@
 // Service Worker — 오프라인 캐시
 // 파일 수정 후 갱신이 안 되면 아래 CACHE 버전 숫자를 올리세요.
-const CACHE = 'jrt-v101';
+const CACHE = 'jrt-v111';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
   './data/kanto.js',
   './data/kanto2.js',
+  './data/services.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
