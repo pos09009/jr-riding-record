@@ -1022,12 +1022,13 @@ function showChokketsuCard(cid){
   const card=compositeCard(c); card.onclick=null; // 표시 전용(클릭 비활성)
   el.innerHTML=''; el.appendChild(card); el.style.display='';
 }
-// 노선별/통합별 안내 노트(예 오카와지선 통과, 사철 집계 제외, 폐선 대체버스)를 맵 버튼 아래에 표시/숨김
+// 노선별/통합별 안내 노트(예 오카와지선 통과, 사철 집계 제외, 폐선 대체버스)를 맵 버튼 아래에 표시/숨김.
+// 노선 노트는 그 노선을 보고 있을 때(선택/환승/직결 모드)만 — '전체' 모드로 나가면 숨김(2026-07-07 사용자 지적).
 function updateLineNote(){
   const el=document.getElementById('line-note'); if(!el) return;
   let src=null;
-  if(selLineId&&!selCompositeId) src=LINES.find(x=>x.id===selLineId);
-  else if(selCompositeId) src=VIEW_COMPOSITES.find(c=>c.id===selCompositeId);
+  if(selCompositeId) src=VIEW_COMPOSITES.find(c=>c.id===selCompositeId);
+  else if(selLineId && viewMode!=='all') src=LINES.find(x=>x.id===selLineId);
   if(src&&src.note){ el.textContent='ⓘ '+src.note; el.style.display=''; }
   else { el.style.display='none'; el.textContent=''; }
 }
@@ -1059,6 +1060,7 @@ function setViewMode(m){
     viewMode='trans';
     document.querySelectorAll('.mm-btn').forEach(b=>b.classList.toggle('on', b.dataset.m==='trans'));
     showChokketsuCard(cid); // 좌상단에 통합 카드 등장
+    updateLineNote();
     const sts=[]; specs.forEach(s=>{ for(let i=s.a;i<=s.b;i++) sts.push(s.line.stations[i]); });
     fitStations(sts); // 직결 네트워크 전체에 맞춰 줌(drawMap 포함)
     return;
@@ -1067,6 +1069,7 @@ function setViewMode(m){
   compRange = (m==='all') ? null : showWithClip(selLineId); // sel/trans: showWith 구간지정 클립 적용
   hideChokketsuCard();
   viewMode=m;
+  updateLineNote(); // '전체'로 나가면 노선 노트 숨김, 선택/환승으로 돌아오면 다시 표시
   document.querySelectorAll('.mm-btn').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
   drawMap();
 }
