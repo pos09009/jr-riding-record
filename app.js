@@ -46,7 +46,15 @@ const LINE_META = {
   uchibo:{color:'#0068B7'}, kururi:{color:'#00AC9B'}, // 쿠루리: 사이쿄선과 동일 색(사용자 지정, 2026-07-01)
   // 미토·오미야 지사 추가분 — 전부 역번호 코드 없음. 스이군=위키 路線色, 미토·아가츠마=사용자 공식 노선도 사진 기준(위키값과 달라 조정, 2026-07-02)
   mito:{color:'#1D6FC5'}, suigun:{color:'#368C44'}, suigun_ota:{color:'#368C44'},
-  agatsuma:{color:'#148579'}
+  agatsuma:{color:'#148579'},
+  // 나가노 방면 — 색=위키 인포박스 路線色 기준이나 사용자 사진 대조로 조정.
+  shinonoi:{code:'SN',color:'#D56A29'}, // 사용자 제공 배지사진 확인 — SN 코드 실재(테두리·글자색이 기존 갈색과 일치, 색 변경 없음)
+  oito:{color:'#8D6C93'}, // 사용자 제공 노선도 사진 기준 — 위키 #9370DB(선명한 보라)보다 탁한 회보라(모브톤)로 조정
+  // 신에츠 본선 회랑 — JR 3구간 + 사철 3사(완주 집계 제외). SE 코드는 위키 路線記号가 篠ノ井~長野 한정으로 명시.
+  shinetsu_takasaki:{color:'#80C241'}, // 위키 路線色 황록(사진 일치)
+  shinetsu_shinonoi:{code:'SE',color:'#3AA0DB'}, // SE 파란 테두리(사용자 사진 확인), 색=#3AA0DB 확정(2026-07-03, #1C6EA1은 너무 어둡다며 되돌림)
+  shinetsu_naoetsu:{color:'#3AA0DB'}, // 니가타 지구, #3AA0DB
+  shinano_tetsudo:{color:'#F0A401'}, kitashinano:{color:'#999966'}, myoko_haneuma:{color:'#35C98E'} // 사철: 위키 路線色
 };
 LINES.forEach(l=>{ const m=LINE_META[l.id]; if(m){ l.code=m.code; l.color=m.color; l.codeColor=m.codeColor; } });
 
@@ -375,7 +383,8 @@ function lineDone(l){
   return {d,tot};
 }
 function doneLines(){
-  return LINES.filter(l=>{ const {d,tot}=lineDone(l); return d===tot; }).length;
+  // tot>0 조건: 전 구간 비JR(nonJrFrom:0)인 사철 노선은 집계 대상 0/0이라 '완주'로 오인되지 않게 제외
+  return LINES.filter(l=>{ const {d,tot}=lineDone(l); return tot>0 && d===tot; }).length;
 }
 
 function loopIncIsCCW(line){
@@ -1013,11 +1022,13 @@ function showChokketsuCard(cid){
   const card=compositeCard(c); card.onclick=null; // 표시 전용(클릭 비활성)
   el.innerHTML=''; el.appendChild(card); el.style.display='';
 }
-// 노선별 안내 노트(예 오카와지선 무사시시라이시 통과)를 맵 버튼 아래에 표시/숨김
+// 노선별/통합별 안내 노트(예 오카와지선 통과, 사철 집계 제외, 폐선 대체버스)를 맵 버튼 아래에 표시/숨김
 function updateLineNote(){
   const el=document.getElementById('line-note'); if(!el) return;
-  const l=(selLineId&&!selCompositeId)?LINES.find(x=>x.id===selLineId):null;
-  if(l&&l.note){ el.textContent='ⓘ '+l.note; el.style.display=''; }
+  let src=null;
+  if(selLineId&&!selCompositeId) src=LINES.find(x=>x.id===selLineId);
+  else if(selCompositeId) src=VIEW_COMPOSITES.find(c=>c.id===selCompositeId);
+  if(src&&src.note){ el.textContent='ⓘ '+src.note; el.style.display=''; }
   else { el.style.display='none'; el.textContent=''; }
 }
 // showWith 중 구간지정({id,from,to})이 있으면 그 노선을 해당 구간만 표시하도록 compRange 생성(예 소테츠→사이쿄 신주쿠~오사키만)

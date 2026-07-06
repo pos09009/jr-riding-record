@@ -40,7 +40,13 @@ window.JR_SERVICES = {
       badges:[{code:'JS',color:'#E4002B'}],
       members:['shonan',{id:'utsunomiya',from:'오미야',to:'우츠노미야'},'takasaki',
                {id:'joetsu',from:'타카사키',to:'신마에바시'},{id:'ryomo',from:'신마에바시',to:'마에바시'},
-               {id:'tokaido',from:'오후나',to:'오다와라'}] }
+               {id:'tokaido',from:'오후나',to:'오다와라'}] },
+    // 신에츠 본선(통합): 역사적 전 회랑 타카사키~니가타. JR 3구간+사철 3구간(집계 제외).
+    // 요코카와~카루이자와는 폐선(JR버스 대체)이라 지도에 빈틈으로 남음 — note로 안내.
+    { id:'__shinetsu_honsen', name:'신에츠 본선 信越本線', color:'#3AA0DB',
+      badges:[{code:'SE',color:'#3AA0DB'}],
+      note:'완주율 집계 대상은 JR 3구간(타카사키~요코카와·시노노이~나가노·나오에츠~니가타)뿐입니다. 카루이자와~시노노이·나가노~나오에츠는 사철 이관(표시만), 요코카와~카루이자와는 폐선으로 JR버스 관동이 대체 운행 중입니다(지도 미표시).',
+      members:['shinetsu_takasaki','shinano_tetsudo','shinetsu_shinonoi','kitashinano','myoko_haneuma','shinetsu_naoetsu'] }
   ],
 
   // ── 노선 목록 카드에서 숨길 노선 id(지도·통합·팝업엔 그대로).
